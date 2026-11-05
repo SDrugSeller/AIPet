@@ -56,6 +56,22 @@ function render() {
     else if (document.activeElement !== input) input.value = value ?? '';
   }
 
+  // 스킨 목록 (사용자가 열어 둔 드롭다운을 닫지 않도록 내용이 바뀔 때만 다시 만든다)
+  const skinSel = /** @type {HTMLSelectElement} */ ($('#skin'));
+  const ids = state.skins.map((/** @type {any} */ k) => k.id).join('|');
+  if (skinSel.dataset.ids !== ids) {
+    skinSel.dataset.ids = ids;
+    skinSel.replaceChildren(
+      ...state.skins.map((/** @type {any} */ k) => {
+        const o = document.createElement('option');
+        o.value = k.id;
+        o.textContent = k.name === k.id ? k.id : `${k.name} (${k.id})`;
+        return o;
+      }),
+    );
+  }
+  skinSel.value = s.general.skin;
+
   /** @type {HTMLInputElement} */ ($('#openaiBaseUrl')).placeholder = state.defaults.openaiBaseUrl;
   /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
   $('#keyStatus').textContent = state.hasKey.openaiKey
@@ -110,6 +126,11 @@ for (const el of document.querySelectorAll('input[name="backend"]')) {
     }
   });
 }
+
+$('#skin').addEventListener('change', (e) => {
+  savedEl.textContent = '스킨을 바꾸는 중… 앱이 다시 시작돼요';
+  save(toPatch('general.skin', /** @type {HTMLSelectElement} */ (e.target).value));
+});
 
 $('#saveKey').addEventListener('click', async () => {
   const input = /** @type {HTMLInputElement} */ ($('#openaiKey'));

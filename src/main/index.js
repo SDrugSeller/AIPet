@@ -24,11 +24,21 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     registerSkinProtocol();
-    const skin = await loadSkin('default');
     const userData = app.getPath('userData');
 
     const store = createStore({ file: path.join(userData, 'settings.json'), safeStorage });
     const config = createConfig({ store, userDataDir: userData });
+
+    // 스킨: AIPET_SKIN > 설정. 불러오지 못하면 기본 스킨으로 시작한다.
+    const wantedSkin = process.env.AIPET_SKIN || store.get().general.skin;
+    /** @type {Awaited<ReturnType<typeof loadSkin>>} */
+    let skin;
+    try {
+      skin = await loadSkin(wantedSkin);
+    } catch (e) {
+      console.error(`스킨 '${wantedSkin}'을 불러오지 못해 기본 스킨을 씁니다:`, /** @type {Error} */ (e).message);
+      skin = await loadSkin('default');
+    }
 
     /** @type {ReturnType<typeof createOverlayManager>} */
     let manager;
@@ -66,12 +76,21 @@ if (!app.requestSingleInstanceLock()) {
     createTray({
       iconPath: path.resolve(here, '../../skins', skin.name, skin.animations.idle.sheet),
       frameSize: skin.frameSize,
+      hitbox: skin.hitbox,
       getMenuTemplate,
       onToggle: () => manager.setVisible(!manager.isVisible()),
     });
 
     // 설정이 바뀔 때마다: 로그인 시 자동 시작 반영, 열려 있는 설정 창 갱신
+    let skinSetting = store.get().general.skin;
     store.onChange((s) => {
+      // 스킨은 시작할 때 한 번 읽으므로, 사용자가 바꾸면 앱을 다시 시작해 적용한다.
+      if (s.general.skin !== skinSetting) {
+        skinSetting = s.general.skin;
+        app.relaunch();
+        app.exit(0);
+        return;
+      }
       // 개발 중(electron.exe 직접 실행)에는 시작 프로그램에 등록하지 않는다.
       if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.launchAtLogin });
       settings.pushState();

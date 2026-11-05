@@ -1,6 +1,7 @@
 // @ts-check
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { DEFAULT_OPENAI_BASE_URL } from './config.js';
+import { listSkins } from './skin.js';
 
 /**
  * 설정 창 (일반 창). 렌더러는 별도 preload로 필요한 API만 쓰고, 비밀(API 키)은 값을 받지 못한다.
@@ -17,8 +18,13 @@ export function createSettingsWindow({ store, config, host, preloadPath, htmlPat
   /** @type {BrowserWindow | null} */
   let win = null;
 
+  /** 설치된 스킨 목록 (설정 창을 열 때 한 번 읽는다) */
+  /** @type {{ id: string, name: string, author: string }[]} */
+  let skins = [];
+
   function state() {
     return {
+      skins,
       settings: store.get(),
       hasKey: { openaiKey: store.hasSecret('openaiKey') },
       backends: host.backends(),
@@ -99,6 +105,10 @@ export function createSettingsWindow({ store, config, host, preloadPath, htmlPat
       win.once('ready-to-show', () => win?.show());
       win.on('closed', () => (win = null));
       void win.loadFile(htmlPath);
+      void listSkins().then((list) => {
+        skins = list;
+        pushState();
+      });
       void host.refresh().then(pushState); // 열 때마다 최신 상태로
     },
     pushState,

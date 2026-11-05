@@ -28,3 +28,13 @@ npm run lint
 - 환경변수(설정에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `AIPET_BACKEND`(`claude-code`|`openai-compat`)
 - 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
+
+## 스킨
+
+- `skins/<이름>/skin.json` + 상태별 PNG 시트. 설정 창의 "펫 스킨"에서 고릅니다 (바꾸면 앱이 다시 시작됩니다). 형식은 [skins/skin.schema.json](skins/skin.schema.json).
+- `default`: 임시 콩 캐릭터 (`node tools/gen-placeholder-skin.mjs`로 생성).
+- `genba-cat`: 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
+  - 배경을 지우고, 몸을 격자 메시로 덮어 관절(머리, 팔, 다리, 꼬리, 입, 눈)만 휘게 해서 idle/walk/drag/drop/sleep/think/work/talk/done/error/attention 시트를 만듭니다. 새 포즈를 그린 것이 아니라 한 장을 변형한 것이라 움직임은 단순합니다.
+  - 완료(done) 모션에서는 원본에 있던 "ヨシ!" 글자를 외칩니다.
+  - 다시 만들려면 `npx electron tools/genba/build.cjs` (움직임 조정은 `tools/genba/page.js`). 더 나은 시트(직접 그리거나 생성한 그림)가 생기면 같은 파일명의 PNG로 교체하면 됩니다.
+  - **저작권**: 원본 이미지의 권리는 원작자에게 있습니다. 개인 사용을 전제로 했으며, 재배포 전에 확인이 필요합니다 (`skin.json`의 `license` 참고).

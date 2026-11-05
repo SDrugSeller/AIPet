@@ -81,6 +81,7 @@ export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
     settle();
     if (agentAnim) {
       const name = agentAnim;
+      pet.facing = skin.facing ?? 'left'; // 시트에 그려진 글자/효과가 좌우로 뒤집히지 않게
       setAnim(name);
       emit();
       if (agentOnce) {
@@ -128,6 +129,7 @@ export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
 
   function enterSleep() {
     settle();
+    pet.facing = skin.facing ?? 'left';
     setAnim('sleep');
     emit();
     clearTimer(); // 사용자가 건드릴 때까지 유지

@@ -35,6 +35,8 @@ export const DEFAULTS = {
     workDir: '',
   },
   general: {
+    /** 펫 스킨 폴더 이름 (바꾸면 앱이 다시 시작된다) */
+    skin: 'default',
     launchAtLogin: false,
     /** 승인 요청 시 알림음 */
     sound: true,
@@ -69,7 +71,7 @@ const SPEC = {
     'openai-compat': { enabled: isBool, baseUrl: httpUrlOrEmpty, model: str(200) },
   },
   permissions: { autoAllowRead: isBool, workDir: str(1000) },
-  general: { launchAtLogin: isBool, sound: isBool, visible: isBool },
+  general: { skin: (/** @type {unknown} */ v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v), launchAtLogin: isBool, sound: isBool, visible: isBool },
 };
 
 /** @param {any} v */

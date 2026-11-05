@@ -9,7 +9,12 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.node },
   },
   {
-    files: ['src/preload/**/*.cjs'],
+    files: ['tools/genba/page.js'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: globals.browser },
+    rules: { 'no-unused-vars': 'off' }, // build()는 Electron이 executeJavaScript로 호출한다
+  },
+  {
+    files: ['src/preload/**/*.cjs', 'tools/genba/build.cjs'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: globals.node },
   },
   {

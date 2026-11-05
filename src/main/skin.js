@@ -38,11 +38,30 @@ export async function loadSkin(name) {
     scale: raw.scale ?? 1,
     facing: raw.facing ?? 'left',
     flippable: raw.flippable ?? true,
+    pixelArt: raw.pixelArt ?? false,
     fallbacks: raw.fallbacks ?? {},
     anchor: raw.anchor,
     hitbox: raw.hitbox ?? { x: 0, y: 0, w: raw.frameSize.w, h: raw.frameSize.h },
     animations: raw.animations,
   };
+}
+
+/**
+ * 설치된 스킨 목록 (skins/<폴더>/skin.json 이 있는 폴더).
+ * @returns {Promise<{ id: string, name: string, author: string }[]>}
+ */
+export async function listSkins() {
+  const out = [];
+  for (const entry of await fs.readdir(skinsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const raw = JSON.parse(await fs.readFile(path.join(skinsRoot, entry.name, 'skin.json'), 'utf8'));
+      out.push({ id: entry.name, name: String(raw.name ?? entry.name), author: String(raw.author ?? '') });
+    } catch {
+      // skin.json이 없거나 깨진 폴더는 목록에서 뺀다
+    }
+  }
+  return out;
 }
 
 /** aipet-skin://<skin>/<file>.png 요청을 skins/ 폴더 안의 파일로만 연결한다. */

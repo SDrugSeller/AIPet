@@ -114,3 +114,15 @@ test('변경하면 구독자에게 알린다', () => {
   s.update({ general: { visible: false } });
   assert.deepEqual(seen, [false]);
 });
+
+test('스킨 이름은 안전한 문자만 허용한다 (경로 조작 방지)', () => {
+  const { file } = tmpFile();
+  const s = createStore({ file, safeStorage: fakeSafe() });
+  assert.equal(s.get().general.skin, 'default');
+  s.update({ general: { skin: 'genba-cat' } });
+  assert.equal(s.get().general.skin, 'genba-cat');
+  for (const bad of ['../evil', 'a/b', 'a\b', '', 'x'.repeat(65), 5]) {
+    s.update({ general: { skin: bad } });
+    assert.equal(s.get().general.skin, 'genba-cat', String(bad));
+  }
+});

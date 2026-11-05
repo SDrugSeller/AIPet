@@ -141,7 +141,8 @@ function render(now) {
   const sheet = anim ? sheets.get(anim) : null;
   if (sheet) {
     const { w: fw, h: fh } = skin.frameSize;
-    ctx.imageSmoothingEnabled = skin.scale % 1 !== 0 || skin.scale < 1;
+    ctx.imageSmoothingEnabled = !skin.pixelArt; // 일러스트는 부드럽게, 도트는 선명하게
+    ctx.imageSmoothingQuality = 'high';
     ctx.save();
     if (flip) {
       ctx.translate(r.x + r.w, r.y);

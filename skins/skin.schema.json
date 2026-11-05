@@ -32,6 +32,11 @@
       "enum": ["left", "right"],
       "default": "left"
     },
+    "pixelArt": {
+      "description": "true면 확대해도 보간하지 않고 도트를 선명하게 유지. 일러스트 스킨은 false",
+      "type": "boolean",
+      "default": false
+    },
     "flippable": {
       "description": "true면 반대 방향을 코드에서 좌우 반전해 사용",
       "type": "boolean",
