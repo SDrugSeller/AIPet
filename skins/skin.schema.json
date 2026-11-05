@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aipet-skin.schema.json",
+  "title": "AIPet Skin",
+  "type": "object",
+  "required": ["schemaVersion", "name", "frameSize", "anchor", "animations"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "author": { "type": "string" },
+    "license": { "type": "string" },
+    "frameSize": {
+      "description": "한 프레임의 픽셀 크기 (모든 시트 공통)",
+      "type": "object",
+      "required": ["w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "integer", "minimum": 8, "maximum": 1024 },
+        "h": { "type": "integer", "minimum": 8, "maximum": 1024 }
+      }
+    },
+    "scale": {
+      "description": "화면 표시 배율 (픽셀아트는 2 이상 권장). DPI 배율과 별개",
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 1
+    },
+    "facing": {
+      "description": "시트 원본이 바라보는 방향",
+      "enum": ["left", "right"],
+      "default": "left"
+    },
+    "flippable": {
+      "description": "true면 반대 방향을 코드에서 좌우 반전해 사용",
+      "type": "boolean",
+      "default": true
+    },
+    "anchor": {
+      "description": "기본 기준점(발 위치), 프레임 좌상단 기준 픽셀",
+      "$ref": "#/$defs/point"
+    },
+    "hitbox": {
+      "description": "클릭/드래그 판정 영역(프레임 좌상단 기준). 생략 시 프레임 전체",
+      "$ref": "#/$defs/rect"
+    },
+    "animations": {
+      "description": "상태 이름 → 애니메이션 정의. idle 필수",
+      "type": "object",
+      "required": ["idle"],
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+      "additionalProperties": { "$ref": "#/$defs/animation" }
+    },
+    "fallbacks": {
+      "description": "없는 상태를 대신할 상태 (예: attention → think). 최종 폴백은 idle",
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+    },
+    "randomActions": {
+      "description": "유휴 중 추첨되는 단발 동작",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["anim"],
+        "additionalProperties": false,
+        "properties": {
+          "anim": { "type": "string", "description": "animations에 정의된 이름" },
+          "weight": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
+          "cooldownSec": { "type": "number", "minimum": 0, "default": 60 }
+        }
+      }
+    },
+    "effects": {
+      "description": "상태 위에 겹치는 오버레이 스프라이트 (느낌표, zzz, 하트 등)",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sheet", "frames", "fps"],
+        "additionalProperties": false,
+        "properties": {
+          "sheet": { "$ref": "#/$defs/sheetPath" },
+          "frames": { "type": "integer", "minimum": 1, "maximum": 64 },
+          "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 },
+          "loop": { "type": "boolean", "default": true },
+          "frameSize": { "type": "object", "required": ["w", "h"], "properties": { "w": { "type": "integer" }, "h": { "type": "integer" } } },
+          "offset": { "$ref": "#/$defs/point", "description": "펫 anchor 기준 상대 위치" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+    },
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" }, "y": { "type": "number" },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "sheetPath": {
+      "description": "스킨 폴더 내 상대 경로 PNG. 절대경로, URL, '..' 금지",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*[.][.])(?![A-Za-z]+:)[A-Za-z0-9_./-]+[.]png$"
+    },
+    "animation": {
+      "type": "object",
+      "required": ["sheet", "frames", "fps"],
+      "additionalProperties": false,
+      "properties": {
+        "sheet": { "$ref": "#/$defs/sheetPath" },
+        "frames": { "type": "integer", "minimum": 1, "maximum": 64, "description": "가로 1줄 스트립의 프레임 수. 시트 너비 = frameSize.w × frames" },
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 },
+        "loop": { "type": "boolean", "default": true },
+        "next": { "type": "string", "description": "loop=false일 때 종료 후 전환할 상태 (기본 idle)" },
+        "anchor": { "$ref": "#/$defs/point", "description": "이 애니메이션 전용 기준점 (생략 시 전역 anchor)" },
+        "moveSpeed": { "type": "number", "minimum": 0, "description": "이동 상태(walk/run/climb)의 초당 이동 px" }
+      }
+    }
+  }
+}

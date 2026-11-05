@@ -1,0 +1,45 @@
+{
+  "$schema": "../skin.schema.json",
+  "schemaVersion": 1,
+  "name": "default",
+  "author": "AIPet",
+  "license": "TBD",
+  "frameSize": { "w": 128, "h": 128 },
+  "scale": 1,
+  "facing": "left",
+  "flippable": true,
+  "anchor": { "x": 64, "y": 124 },
+  "hitbox": { "x": 24, "y": 20, "w": 80, "h": 104 },
+  "animations": {
+    "idle":      { "sheet": "idle.png",      "frames": 6, "fps": 6,  "loop": true },
+    "walk":      { "sheet": "walk.png",      "frames": 8, "fps": 10, "loop": true, "moveSpeed": 60 },
+    "drag":      { "sheet": "drag.png",      "frames": 3, "fps": 6,  "loop": true },
+    "drop":      { "sheet": "drop.png",      "frames": 4, "fps": 10, "loop": false, "next": "idle" },
+    "think":     { "sheet": "think.png",     "frames": 6, "fps": 6,  "loop": true },
+    "work":      { "sheet": "work.png",      "frames": 8, "fps": 10, "loop": true },
+    "talk":      { "sheet": "talk.png",      "frames": 4, "fps": 8,  "loop": true },
+    "done":      { "sheet": "done.png",      "frames": 8, "fps": 10, "loop": false, "next": "idle" },
+    "attention": { "sheet": "attention.png", "frames": 6, "fps": 8,  "loop": true },
+    "error":     { "sheet": "error.png",     "frames": 6, "fps": 8,  "loop": false, "next": "idle" },
+    "react":     { "sheet": "react.png",     "frames": 5, "fps": 10, "loop": false, "next": "idle" },
+    "yawn":      { "sheet": "yawn.png",      "frames": 6, "fps": 8,  "loop": false, "next": "idle" },
+    "look_around": { "sheet": "look_around.png", "frames": 6, "fps": 6, "loop": false, "next": "idle" }
+  },
+  "fallbacks": {
+    "talk": "think",
+    "attention": "think",
+    "error": "think",
+    "react": "done",
+    "drop": "idle",
+    "run": "walk",
+    "sit": "idle",
+    "sleep": "idle"
+  },
+  "randomActions": [
+    { "anim": "yawn",        "weight": 3, "cooldownSec": 120 },
+    { "anim": "look_around", "weight": 4, "cooldownSec": 60 }
+  ],
+  "effects": {
+    "exclaim": { "sheet": "fx_exclaim.png", "frames": 4, "fps": 8, "loop": true, "offset": { "x": 0, "y": -110 } }
+  }
+}
