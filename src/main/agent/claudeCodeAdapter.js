@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createQueue, PERSONA, PERSONA_TOOLS } from './adapter.js';
+import { buildSystemPrompt, createQueue } from './adapter.js';
 
 const isWin = process.platform === 'win32';
 const exe = isWin ? '.exe' : '';
@@ -174,7 +174,7 @@ export function translateClaudeMessage(msg, st) {
 
 /**
  * @param {{
- *   getConfig: () => { path: string, tools: boolean, workDir: string },
+ *   getConfig: () => { path: string, tools: boolean, workDir: string, persona?: string },
  *   metaDir: string,
  * }} opts
  *   workDir: 에이전트가 접근하는 작업 폴더. CLI는 항상 여기서 실행된다.
@@ -184,8 +184,11 @@ export function translateClaudeMessage(msg, st) {
 export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   /** @type {string | null} 이어서 대화하기 위한 세션 ID */
   let sessionId = null;
-  /** 세션 ID가 만들어진 작업 폴더 (바뀌면 이어 말할 수 없다) */
-  let sessionCwd = '';
+  /**
+   * 세션이 만들어졌을 때의 작업 폴더와 시스템 프롬프트. CLI는 처음 보낸 시스템 프롬프트를 세션에 기록해 두고
+   * 이어 말할 때 그대로 다시 쓰므로, 이 값이 바뀌면(말투/도구/폴더 변경) 새 세션으로 시작해야 한다.
+   */
+  let sessionKey = '';
   /** @type {import('node:child_process').ChildProcess | null} */
   let child = null;
   /** @type {StreamState | null} */
@@ -242,8 +245,10 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         }
         fs.mkdirSync(cfg.workDir, { recursive: true });
         fs.mkdirSync(metaDir, { recursive: true });
-        const personaFile = path.join(metaDir, cfg.tools ? 'persona-tools.txt' : 'persona.txt');
-        fs.writeFileSync(personaFile, cfg.tools ? PERSONA_TOOLS : PERSONA, 'utf8');
+        const systemPrompt = buildSystemPrompt(cfg.persona, cfg.tools);
+        const key = JSON.stringify([cfg.workDir, cfg.tools, systemPrompt]);
+        const personaFile = path.join(metaDir, 'system-prompt.txt');
+        fs.writeFileSync(personaFile, systemPrompt, 'utf8');
 
         const args = [
           '-p',
@@ -257,7 +262,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
           '--append-system-prompt-file', personaFile,
         ];
         if (!cfg.tools) args.push('--tools', ''); // 도구를 모두 끈 대화 전용 모드
-        if (sessionId && sessionCwd === cfg.workDir) args.push('--resume', sessionId);
+        if (sessionId && sessionKey === key) args.push('--resume', sessionId);
 
         /** @type {StreamState} */
         const st = { sawDelta: false, finished: false, status: null, sessionId: null };
@@ -305,7 +310,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         c.on('close', (code) => {
           if (st.sessionId && st.finished) {
             sessionId = st.sessionId;
-            sessionCwd = cfg.workDir;
+            sessionKey = key;
           }
           if (!st.finished && !aborted) {
             queue.push(code === 0 ? { type: 'done' } : { type: 'error', message: stderr.trim().slice(-300) || `claude가 종료되었어요 (코드 ${code})` });

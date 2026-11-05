@@ -1,7 +1,7 @@
 // @ts-check
 // OpenAI 호환 어댑터 (Ollama, LM Studio, OpenRouter 등). /chat/completions 스트리밍(SSE)을 AgentEvent로 변환한다.
 // 이 어댑터에는 도구 루프가 없다 (대화 전용). 도구는 API 어댑터(M6)에서 앱이 직접 게이트하며 구현한다.
-import { createQueue, PERSONA } from './adapter.js';
+import { buildSystemPrompt, createQueue } from './adapter.js';
 
 const MAX_HISTORY = 20;
 
@@ -41,7 +41,7 @@ function isHttpUrl(url) {
 /**
  * 설정은 호출할 때마다 getConfig()로 읽는다 (설정 화면에서 바꾸면 바로 반영).
  * @param {{
- *   getConfig: () => { baseUrl: string, model?: string, apiKey?: string },
+ *   getConfig: () => { baseUrl: string, model?: string, apiKey?: string, persona?: string },
  *   fetchImpl?: typeof fetch,
  * }} opts
  * @returns {import('./adapter.js').AgentAdapter}
@@ -104,7 +104,7 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
       (async () => {
         queue.push({ type: 'status', state: 'thinking' });
         const base = baseOf();
-        const messages = [{ role: 'system', content: PERSONA }, ...history, { role: 'user', content: msg }];
+        const messages = [{ role: 'system', content: buildSystemPrompt(getConfig().persona, false) }, ...history, { role: 'user', content: msg }];
         let reply = '';
         try {
           const model = await resolveModel();

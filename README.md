@@ -29,6 +29,12 @@ npm run lint
 - 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
 
+## 말투
+
+- 펫의 말투/성격은 **텍스트 파일 하나 = 말투 하나**로 `%APPDATA%/aipet/personas/`(설정 창에 경로 표시)에 저장됩니다. 처음 실행하면 저장소의 [personas/](personas/) 폴더(기본, 친구 (반말), 비서 (존댓말), 현장냥이, 한 줄 요약)를 복사해 채웁니다.
+- 선택/수정/새로 만들기/삭제는 설정 창의 "말투" 영역에서, 선택만 바꾸는 건 트레이·펫 우클릭 메뉴의 "말투"에서 할 수 있습니다. 파일을 직접 편집하거나 `.txt`를 폴더에 넣어도 목록에 나타납니다.
+- 시스템 프롬프트 = 말투 파일 내용 + 앱이 붙이는 도구 사용 안내(도구 가능/불가, 승인 규칙). 다음 메시지부터 적용되며, Claude Code는 말투를 바꾸면 새 대화로 시작합니다 (CLI가 처음 보낸 프롬프트를 세션에 기록하기 때문).
+
 ## 스킨
 
 - `skins/<이름>/skin.json` + 상태별 PNG 시트. 설정 창의 "펫 스킨"에서 고릅니다 (바꾸면 앱이 다시 시작됩니다). 형식은 [skins/skin.schema.json](skins/skin.schema.json).

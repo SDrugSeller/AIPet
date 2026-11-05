@@ -72,6 +72,28 @@ function render() {
   }
   skinSel.value = s.general.skin;
 
+  // 말투 (입력 중인 칸은 건드리지 않는다)
+  const pr = state.persona;
+  const personaSel = /** @type {HTMLSelectElement} */ ($('#persona'));
+  const pids = pr.items.map((/** @type {any} */ p) => p.id).join('|');
+  if (personaSel.dataset.ids !== pids) {
+    personaSel.dataset.ids = pids;
+    personaSel.replaceChildren(
+      ...pr.items.map((/** @type {any} */ p) => {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name;
+        return o;
+      }),
+    );
+  }
+  personaSel.value = pr.selectedId;
+  const personaText = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
+  personaText.dataset.id = pr.selectedId; // 자동 저장할 때 어느 파일인지 (선택이 바뀌는 순간의 어긋남 방지)
+  if (document.activeElement !== personaText) personaText.value = pr.text;
+  /** @type {HTMLButtonElement} */ ($('#personaDelete')).disabled = pr.items.length <= 1;
+  $('#personaDir').textContent = `저장 위치: ${pr.dir}`;
+
   /** @type {HTMLInputElement} */ ($('#openaiBaseUrl')).placeholder = state.defaults.openaiBaseUrl;
   /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
   $('#keyStatus').textContent = state.hasKey.openaiKey
@@ -131,6 +153,53 @@ $('#skin').addEventListener('change', (e) => {
   savedEl.textContent = '스킨을 바꾸는 중… 앱이 다시 시작돼요';
   save(toPatch('general.skin', /** @type {HTMLSelectElement} */ (e.target).value));
 });
+
+// --- 말투 ---
+
+$('#persona').addEventListener('change', (e) => save(toPatch('persona.selected', /** @type {HTMLSelectElement} */ (e.target).value)));
+
+{
+  const ta = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const commit = async () => {
+    clearTimeout(timer);
+    const id = ta.dataset.id;
+    if (!id) return;
+    const next = await api.personaSave(id, ta.value);
+    if (next) {
+      state = next;
+      flashSaved();
+    }
+  };
+  ta.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(commit, 700);
+  });
+  ta.addEventListener('blur', commit);
+}
+
+$('#personaCreate').addEventListener('click', async () => {
+  const nameEl = /** @type {HTMLInputElement} */ ($('#personaNewName'));
+  const r = await api.personaCreate(nameEl.value, /** @type {HTMLTextAreaElement} */ ($('#personaText')).value);
+  if (!r) return;
+  state = r.state;
+  if (r.result.ok) nameEl.value = '';
+  render();
+  flashSaved(r.result.ok ? '새 말투를 만들었어요' : r.result.reason);
+});
+
+$('#personaDelete').addEventListener('click', async () => {
+  const id = /** @type {HTMLSelectElement} */ ($('#persona')).value;
+  if (!id || !window.confirm(`'${id.replace(/\.txt$/, '')}' 말투를 삭제할까요?`)) return;
+  const r = await api.personaDelete(id);
+  if (!r) return;
+  state = r.state;
+  render();
+  flashSaved(r.result.ok ? '삭제했어요' : r.result.reason);
+});
+
+$('#personaFolder').addEventListener('click', () => api.personaOpenFolder());
 
 $('#saveKey').addEventListener('click', async () => {
   const input = /** @type {HTMLInputElement} */ ($('#openaiKey'));

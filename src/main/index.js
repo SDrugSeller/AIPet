@@ -6,6 +6,7 @@ import { createConfig } from './config.js';
 import { buildMenuTemplate } from './menu.js';
 import { createSettingsWindow } from './settingsWindow.js';
 import { loadSkin, registerSkinProtocol, SKIN_SCHEME } from './skin.js';
+import { createPersonaStore } from './personas.js';
 import { createStore } from './store.js';
 import { createTray } from './tray.js';
 import { createOverlayManager } from './windows.js';
@@ -27,7 +28,12 @@ if (!app.requestSingleInstanceLock()) {
     const userData = app.getPath('userData');
 
     const store = createStore({ file: path.join(userData, 'settings.json'), safeStorage });
-    const config = createConfig({ store, userDataDir: userData });
+    // 말투 파일: userData/personas/*.txt (처음에는 저장소의 personas/ 내용으로 채운다)
+    const personas = createPersonaStore({
+      dir: path.join(userData, 'personas'),
+      seedDir: path.resolve(here, '../../personas'),
+    });
+    const config = createConfig({ store, personas, userDataDir: userData });
 
     // 스킨: AIPET_SKIN > 설정. 불러오지 못하면 기본 스킨으로 시작한다.
     const wantedSkin = process.env.AIPET_SKIN || store.get().general.skin;
@@ -52,6 +58,8 @@ if (!app.requestSingleInstanceLock()) {
         isVisible: manager.isVisible,
         setVisible: manager.setVisible,
         openSettings: () => settings.open(),
+        listPersonas: () => personas.list().map((p) => ({ ...p, selected: p.id === store.get().persona.selected })),
+        selectPersona: (id) => store.update({ persona: { selected: id } }),
       });
 
     manager = createOverlayManager({
@@ -67,6 +75,7 @@ if (!app.requestSingleInstanceLock()) {
     settings = createSettingsWindow({
       store,
       config,
+      personas,
       host: manager.host,
       preloadPath: path.join(here, '../preload/settingsPreload.cjs'),
       htmlPath: path.join(here, '../settings/index.html'),
@@ -103,6 +112,11 @@ if (!app.requestSingleInstanceLock()) {
         const w = settings.getWindow();
         const dir = process.env.AIPET_CAPTURE_DIR;
         if (!w || !dir) return;
+        // AIPET_SETTINGS_SCROLL=<요소 id>: 그 요소가 보이도록 스크롤한 뒤 캡처한다
+        if (process.env.AIPET_SETTINGS_SCROLL) {
+          await w.webContents.executeJavaScript(`document.getElementById(${JSON.stringify(process.env.AIPET_SETTINGS_SCROLL)})?.scrollIntoView()`);
+          await new Promise((r) => setTimeout(r, 300));
+        }
         const { writeFile } = await import('node:fs/promises');
         await writeFile(path.join(dir, 'settings.png'), (await w.webContents.capturePage()).toPNG());
       }, 4000);

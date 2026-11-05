@@ -125,3 +125,16 @@ test('abort: 진행 중인 요청을 끊으면 error 없이 끝난다', async ()
   assert.equal(events.some((e) => e.type === 'done'), false);
   s.close();
 });
+
+test('send: 선택한 말투가 시스템 메시지에 반영된다', async () => {
+  const s = await startServer();
+  try {
+    const a = createOpenAICompatAdapter({ getConfig: () => ({ baseUrl: s.baseUrl, model: 'm', persona: '말끝에 냥을 붙여' }) });
+    await collect(a, '안녕');
+    const system = s.requests[0].body.messages[0];
+    assert.equal(system.role, 'system');
+    assert.ok(system.content.startsWith('말끝에 냥을 붙여'));
+  } finally {
+    s.close();
+  }
+});

@@ -28,21 +28,26 @@
  * @property {() => void} [reset]  대화 맥락 초기화
  */
 
-const PERSONA_BASE = [
-  "You are a small, friendly pet living on the user's desktop.",
-  'Keep replies short: one to three sentences, warm and conversational.',
-  'Reply in the same language the user writes in.',
-];
+/** 말투를 고르지 못했을 때 쓰는 기본 말투 (personas/기본.txt와 같은 내용) */
+export const DEFAULT_PERSONA =
+  '너는 사용자의 데스크톱 화면에 사는 작고 친근한 펫이야. 한두 문장으로 짧고 따뜻하게, 대화하듯 답해. 사용자가 쓰는 언어로 답해.';
 
-/** 도구를 쓸 수 없는 펫 페르소나 */
-export const PERSONA = [...PERSONA_BASE, 'You currently cannot use tools or access files, so do not offer to.'].join(' ');
-
-/** 도구를 쓸 수 있는 펫 페르소나. 위험한 동작은 사용자가 승인해야 실행된다. */
-export const PERSONA_TOOLS = [
-  ...PERSONA_BASE,
+const TOOLS_OFF = 'You currently cannot use tools or access files, so do not offer to.';
+const TOOLS_ON = [
   'You can read and edit files and run commands, but only inside the allowed work folder,',
   'and the user must approve risky actions first. If an action is denied, accept it and do not try to work around it.',
 ].join(' ');
+
+/**
+ * 시스템 프롬프트 = 사용자가 고른 말투 + 앱이 정하는 도구 사용 안내.
+ * (말투는 설정의 말투 파일에서 오므로 사용자가 자유롭게 바꿀 수 있다.)
+ * @param {string | undefined} persona @param {boolean} tools
+ */
+export function buildSystemPrompt(persona, tools) {
+  return `${(persona || '').trim() || DEFAULT_PERSONA}
+
+${tools ? TOOLS_ON : TOOLS_OFF}`;
+}
 
 /**
  * push/close로 값을 밀어 넣고 for await로 읽는 단순 큐. 콜백 기반 스트림을 AsyncIterable로 바꾼다.

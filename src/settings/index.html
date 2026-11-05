@@ -67,6 +67,29 @@
       </section>
 
       <section>
+        <h2>말투</h2>
+        <p class="hint">펫이 어떤 말투와 성격으로 대답할지 정하는 프롬프트예요. 말투 하나가 텍스트 파일 하나이고, 아래 폴더에 저장돼요.</p>
+        <label class="field">말투 선택
+          <select id="persona"></select>
+        </label>
+        <label class="field">프롬프트 <span class="muted">(고르면 내용이 아래에 나오고, 고치면 자동 저장돼요)</span>
+          <textarea id="personaText" rows="7" spellcheck="false"></textarea>
+        </label>
+        <div class="inline">
+          <button type="button" id="personaDelete">이 말투 삭제</button>
+          <button type="button" id="personaFolder">폴더 열기</button>
+        </div>
+        <div class="field">새 말투 만들기 <span class="muted">(위 프롬프트 내용을 복사해 새 파일로 저장해요)</span>
+          <div class="inline">
+            <input type="text" id="personaNewName" placeholder="이름 (예: 츤데레)" maxlength="40" />
+            <button type="button" id="personaCreate">추가</button>
+          </div>
+        </div>
+        <p class="muted" id="personaDir"></p>
+        <p class="muted">다음 메시지부터 적용돼요. Claude Code는 말투를 바꾸면 새 대화로 시작해서 이전 대화 내용은 기억하지 못해요.</p>
+      </section>
+
+      <section>
         <h2>권한</h2>
         <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
         <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>

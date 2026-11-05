@@ -1,5 +1,5 @@
 // @ts-check
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { DEFAULT_OPENAI_BASE_URL } from './config.js';
 import { listSkins } from './skin.js';
 
@@ -8,13 +8,14 @@ import { listSkins } from './skin.js';
  * @param {{
  *   store: ReturnType<typeof import('./store.js').createStore>,
  *   config: ReturnType<typeof import('./config.js').createConfig>,
+ *   personas: ReturnType<typeof import('./personas.js').createPersonaStore>,
  *   host: ReturnType<typeof import('./agent/agentHost.js').createAgentHost>,
  *   preloadPath: string,
  *   htmlPath: string,
  *   packaged: boolean,
  * }} opts
  */
-export function createSettingsWindow({ store, config, host, preloadPath, htmlPath, packaged }) {
+export function createSettingsWindow({ store, config, personas, host, preloadPath, htmlPath, packaged }) {
   /** @type {BrowserWindow | null} */
   let win = null;
 
@@ -22,8 +23,16 @@ export function createSettingsWindow({ store, config, host, preloadPath, htmlPat
   /** @type {{ id: string, name: string, author: string }[]} */
   let skins = [];
 
+  /** 말투 목록과 선택한 말투의 내용 (파일이 바뀌었을 수 있으니 매번 읽는다) */
+  function personaState() {
+    const items = personas.list();
+    const selectedId = items.find((p) => p.id === store.get().persona.selected)?.id ?? items[0]?.id ?? '';
+    return { dir: personas.dir, items, selectedId, text: selectedId ? (personas.read(selectedId) ?? '') : '' };
+  }
+
   function state() {
     return {
+      persona: personaState(),
       skins,
       settings: store.get(),
       hasKey: { openaiKey: store.hasSecret('openaiKey') },
@@ -56,6 +65,36 @@ export function createSettingsWindow({ store, config, host, preloadPath, htmlPat
     const result = store.setSecret(name, value);
     await host.refresh();
     return { result, state: state() };
+  });
+
+  ipcMain.handle('settings:persona-save', (e, id, text) => {
+    if (!fromSettings(e) || typeof id !== 'string' || typeof text !== 'string') return null;
+    personas.write(id, text);
+    return state();
+  });
+
+  ipcMain.handle('settings:persona-create', (e, name, text) => {
+    if (!fromSettings(e) || typeof name !== 'string' || typeof text !== 'string') return null;
+    const r = personas.create(name, text);
+    if (r.ok && r.id) store.update({ persona: { selected: r.id } });
+    return { result: r, state: state() };
+  });
+
+  ipcMain.handle('settings:persona-delete', (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    if (personas.list().length <= 1) return { result: { ok: false, reason: '마지막 말투는 지울 수 없어요' }, state: state() };
+    const r = personas.remove(id);
+    if (r.ok && store.get().persona.selected === id) {
+      const first = personas.list()[0]?.id;
+      if (first) store.update({ persona: { selected: first } });
+    }
+    return { result: r, state: state() };
+  });
+
+  ipcMain.handle('settings:persona-open-folder', async (e) => {
+    if (!fromSettings(e)) return null;
+    await shell.openPath(personas.dir);
+    return true;
   });
 
   ipcMain.handle('settings:select', (e, id) => {

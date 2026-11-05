@@ -28,6 +28,10 @@ export const DEFAULTS = {
       model: '',
     },
   },
+  persona: {
+    /** 말투 파일 이름 (userData/personas/*.txt) */
+    selected: '기본.txt',
+  },
   permissions: {
     /** 읽기 전용 도구(Read/Glob/Grep 등)는 묻지 않고 허용 */
     autoAllowRead: true,
@@ -70,6 +74,7 @@ const SPEC = {
     'claude-code': { enabled: isBool, path: str(1000), tools: isBool },
     'openai-compat': { enabled: isBool, baseUrl: httpUrlOrEmpty, model: str(200) },
   },
+  persona: { selected: (/** @type {unknown} */ v) => typeof v === 'string' && /^[^\\/:*?"<>|]{1,60}\.txt$/.test(v) && !v.includes('..') },
   permissions: { autoAllowRead: isBool, workDir: str(1000) },
   general: { skin: (/** @type {unknown} */ v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v), launchAtLogin: isBool, sound: isBool, visible: isBool },
 };
