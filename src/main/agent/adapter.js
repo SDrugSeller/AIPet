@@ -10,7 +10,12 @@
  *   | { type: 'error', message: string }} AgentEvent
  */
 
-/** @typedef {{ ok: boolean, reason?: string }} DetectResult */
+/**
+ * @typedef {Object} DetectResult
+ * @property {boolean} ok
+ * @property {string} [reason]  사용할 수 없을 때 이유와 해결 안내
+ * @property {string} [info]    어떤 계정/주소로 동작하는지 (설정 화면에 표시, DESIGN.md 4.3)
+ */
 
 /**
  * @typedef {Object} AgentAdapter
@@ -18,17 +23,25 @@
  * @property {string} label  사용자에게 보이는 이름
  * @property {() => Promise<DetectResult>} detect  설치/로그인/서버 연결 점검
  * @property {(msg: string, ctx?: object) => AsyncIterable<AgentEvent>} send
- * @property {(id: string, allow: boolean) => void} respondPermission
+ * @property {(id: string, allow: boolean, message?: string) => void} respondPermission  tool_request에 대한 사용자 응답
  * @property {() => void} abort
  * @property {() => void} [reset]  대화 맥락 초기화
  */
 
-/** 펫 페르소나. 모든 어댑터가 공통으로 쓴다. */
-export const PERSONA = [
+const PERSONA_BASE = [
   "You are a small, friendly pet living on the user's desktop.",
   'Keep replies short: one to three sentences, warm and conversational.',
   'Reply in the same language the user writes in.',
-  'You currently cannot use tools or access files, so do not offer to.',
+];
+
+/** 도구를 쓸 수 없는 펫 페르소나 */
+export const PERSONA = [...PERSONA_BASE, 'You currently cannot use tools or access files, so do not offer to.'].join(' ');
+
+/** 도구를 쓸 수 있는 펫 페르소나. 위험한 동작은 사용자가 승인해야 실행된다. */
+export const PERSONA_TOOLS = [
+  ...PERSONA_BASE,
+  'You can read and edit files and run commands, but only inside the allowed work folder,',
+  'and the user must approve risky actions first. If an action is denied, accept it and do not try to work around it.',
 ].join(' ');
 
 /**

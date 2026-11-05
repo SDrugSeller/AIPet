@@ -92,6 +92,8 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 - CLI 어댑터는 CLI의 권한 요청을 `tool_request`로 중계하고 `respondPermission`으로 응답을 전달한다. API 어댑터는 앱이 직접 게이트한다.
 - 허용 범위(작업 디렉터리)를 설정에서 지정
 
+**구현 메모 (M4, Claude Code)**: `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`로 실행하면 CLI가 도구 사용 전에 stdout으로 `control_request`(`subtype: can_use_tool`, `tool_name`, `input`)를 보내고, 앱이 stdin으로 `control_response`(`behavior: allow|deny`)를 돌려준다. `--setting-sources project,local`로 사용자 전역 허용 규칙이 승인 절차를 우회하지 못하게 한다. 이 프로토콜은 공식 SDK가 쓰는 방식이지만 CLI 버전에 따라 바뀔 수 있으므로 CLI 업데이트 시 `tests/claudeTranslate.test.mjs`와 실제 실행으로 재검증한다.
+
 ## 5. 펫 엔진
 
 ### 5.1 입력 / 오버레이 / 이동
@@ -186,11 +188,12 @@ AIPet/
  ├─ package.json
  ├─ docs/DESIGN.md
  ├─ src/
- │   ├─ main/        (index.js, windows.js, petEngine.js, skin.js, [store.js, tray.js: M4])
- │   ├─ main/agent/  (adapter.js, agentHost.js, claudeCodeAdapter.js, openaiCompatAdapter.js, [apiAdapter.js, permissions.js: M4~M6])
+ │   ├─ main/        (index.js, windows.js, petEngine.js, skin.js, store.js, config.js, menu.js, tray.js, settingsWindow.js)
+ │   ├─ main/agent/  (adapter.js, agentHost.js, permissions.js, claudeCodeAdapter.js, openaiCompatAdapter.js, [apiAdapter.js: M6])
  │   ├─ shared/      (motion.js: main/renderer 공용 이동 공식)
- │   ├─ preload/     (preload.cjs)
- │   └─ renderer/    (index.html, main.js, chat.js, style.css)
+ │   ├─ preload/     (preload.cjs, settingsPreload.cjs)
+ │   ├─ renderer/    (index.html, main.js, chat.js, style.css)  오버레이
+ │   └─ settings/    (index.html, settings.js, settings.css)  설정 창
  ├─ tests/         (node --test)
  ├─ tools/         (gen-placeholder-skin.mjs)
  ├─ skins/         (skin.schema.json, default/skin.json + 상태별 *.png)

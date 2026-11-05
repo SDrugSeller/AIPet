@@ -19,10 +19,16 @@ contextBridge.exposeInMainWorld('aipet', {
   chatSend: (/** @type {string} */ text) => ipcRenderer.send('chat:send', text),
   chatAbort: () => ipcRenderer.send('chat:abort'),
   chatClose: () => ipcRenderer.send('chat:close'),
+  /** 입력창을 눌렀다: 키보드 포커스가 필요하다 (권한 요청으로 자동으로 열린 말풍선일 때) */
+  chatFocus: () => ipcRenderer.send('chat:focus'),
+  /** 도구 사용 승인 카드의 허용/거부 */
+  permRespond: (/** @type {string} */ id, /** @type {boolean} */ allow) => ipcRenderer.send('perm:respond', id, allow),
 
   onPetState: (/** @type {(s: any) => void} */ cb) => on('pet:state', cb),
   onBounds: (/** @type {(b: any) => void} */ cb) => on('overlay:bounds', cb),
   onChatState: (/** @type {(s: any) => void} */ cb) => on('chat:state', cb),
   onChatUser: (/** @type {(m: any) => void} */ cb) => on('chat:user', cb),
   onAgentEvent: (/** @type {(e: any) => void} */ cb) => on('agent:event', cb),
+  onPermRequest: (/** @type {(r: any) => void} */ cb) => on('perm:request', cb),
+  onPermResolved: (/** @type {(r: any) => void} */ cb) => on('perm:resolved', cb),
 });

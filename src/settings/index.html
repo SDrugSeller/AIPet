@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'"
+    />
+    <title>AIPet 설정</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main>
+      <h1>AIPet 설정</h1>
+
+      <section>
+        <h2>AI 연결</h2>
+        <p class="hint">
+          펫이 어떤 AI와 이야기할지 고르세요. 앱은 로그인 정보를 직접 받거나 저장하지 않아요.
+          Claude Code는 터미널에서 직접 로그인한 계정을, 다른 연결은 아래에 입력한 주소/키를 사용해요.
+        </p>
+
+        <article class="card" data-backend="claude-code">
+          <header>
+            <label class="pick"><input type="radio" name="backend" value="claude-code" /> <strong>Claude Code</strong></label>
+            <span class="badge" data-role="status"></span>
+          </header>
+          <pre class="info" data-role="info"></pre>
+          <p class="reason" data-role="reason"></p>
+          <label class="row"><input type="checkbox" data-path="adapters.claude-code.enabled" /> 사용</label>
+          <label class="row">
+            <input type="checkbox" data-path="adapters.claude-code.tools" />
+            파일·명령 도구 사용 <span class="muted">(위험한 동작은 매번 허용 여부를 물어요)</span>
+          </label>
+          <label class="field">claude 실행 파일 경로 <span class="muted">(비우면 자동 탐지)</span>
+            <input type="text" data-path="adapters.claude-code.path" placeholder="자동 탐지" spellcheck="false" />
+          </label>
+        </article>
+
+        <article class="card" data-backend="openai-compat">
+          <header>
+            <label class="pick"><input type="radio" name="backend" value="openai-compat" /> <strong>Ollama / OpenAI 호환</strong></label>
+            <span class="badge" data-role="status"></span>
+          </header>
+          <pre class="info" data-role="info"></pre>
+          <p class="reason" data-role="reason"></p>
+          <label class="row"><input type="checkbox" data-path="adapters.openai-compat.enabled" /> 사용</label>
+          <label class="field">서버 주소
+            <input type="text" id="openaiBaseUrl" data-path="adapters.openai-compat.baseUrl" spellcheck="false" />
+          </label>
+          <label class="field">모델 <span class="muted">(비우면 서버의 첫 모델)</span>
+            <input type="text" data-path="adapters.openai-compat.model" placeholder="예: llama3.2" spellcheck="false" />
+          </label>
+          <div class="field">API 키 <span class="muted">(선택, OS 보안 저장소에 암호화해 저장돼요)</span>
+            <div class="inline">
+              <input type="password" id="openaiKey" placeholder="입력 후 저장" autocomplete="off" spellcheck="false" />
+              <button type="button" id="saveKey">저장</button>
+              <button type="button" id="clearKey">삭제</button>
+            </div>
+            <span class="muted" id="keyStatus"></span>
+          </div>
+          <p class="muted">이 연결은 대화만 가능해요 (파일·명령 도구 없음).</p>
+        </article>
+
+        <button type="button" id="recheck">연결 다시 확인</button>
+      </section>
+
+      <section>
+        <h2>권한</h2>
+        <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
+        <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
+          <div class="inline">
+            <input type="text" id="workDir" readonly />
+            <button type="button" id="pickDir">선택…</button>
+            <button type="button" id="resetDir">기본값</button>
+          </div>
+        </div>
+        <p class="muted">파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.</p>
+      </section>
+
+      <section>
+        <h2>일반</h2>
+        <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
+        <label class="row">
+          <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
+          <span class="muted" id="loginNote"></span>
+        </label>
+      </section>
+
+      <footer><span id="saved" aria-live="polite"></span></footer>
+    </main>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

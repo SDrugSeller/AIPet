@@ -1,10 +1,13 @@
 // @ts-check
-// 에이전트 호스트: 어댑터 목록/선택, 한 번에 한 대화, AgentEvent → UI 중계 + 펫 모션 매핑 (DESIGN.md 5.3).
+// 에이전트 호스트: 어댑터 목록/선택, 한 번에 한 대화, AgentEvent → UI 중계 + 펫 모션 매핑 (DESIGN.md 5.3),
+// 도구 권한 요청 처리 (정책으로 허용/거부/사용자에게 묻기, DESIGN.md 4.4).
+import { decide, describeRequest } from './permissions.js';
 
 const MAX_LOG = 20;
 
 /**
  * @typedef {{ role: 'user' | 'assistant' | 'error', text: string }} LogEntry
+ * @typedef {{ id: string, title: string, detail: string }} PendingPermission
  *
  * @param {{
  *   adapters: import('./adapter.js').AgentAdapter[],
@@ -14,39 +17,71 @@ const MAX_LOG = 20;
  *     setAgentAnim: (name: string | null, opts?: { once?: boolean }) => void,
  *   },
  *   broadcast: (channel: string, payload: any) => void,
- *   onOpenChange?: (open: boolean) => void,
- *   preferred?: string,
+ *   onOpenChange?: (open: boolean, opts: { focus: boolean }) => void,
+ *   isEnabled?: (adapterId: string) => boolean,
+ *   getPolicy?: () => { autoAllowRead: boolean, workDir: string },
+ *   notify?: () => void,
+ *   onSelect?: (adapterId: string) => void,
+ *   preferred?: string | null,
  * }} opts
  */
-export function createAgentHost({ adapters, engine, broadcast, onOpenChange, preferred }) {
+export function createAgentHost({
+  adapters,
+  engine,
+  broadcast,
+  onOpenChange,
+  isEnabled = () => true,
+  getPolicy = () => ({ autoAllowRead: true, workDir: process.cwd() }),
+  notify,
+  onSelect,
+  preferred = null,
+}) {
   /** @type {Map<string, import('./adapter.js').DetectResult>} */
   const detected = new Map();
+  /** 지금 쓰는 백엔드 */
   /** @type {string | null} */
   let selected = null;
-  let userChose = false;
+  /** 사용자가 고른 백엔드. 쓸 수 있으면 항상 이것을 쓴다. */
+  /** @type {string | null} */
+  let wanted = preferred;
   let open = false;
   let busy = false;
   /** @type {LogEntry[]} */
   const log = [];
+  /** 사용자의 승인을 기다리는 요청 */
+  /** @type {Map<string, PendingPermission>} */
+  const pending = new Map();
   /** @type {import('./adapter.js').AgentAdapter | null} */
   let running = null;
 
   /** @param {string} id */
   const byId = (id) => adapters.find((a) => a.id === id) ?? null;
+  /** @param {string} id */
+  const usable = (id) => isEnabled(id) && !!detected.get(id)?.ok;
 
   function backends() {
     return adapters.map((a) => ({
       id: a.id,
       label: a.label,
-      available: detected.get(a.id)?.ok ?? false,
-      reason: detected.get(a.id)?.reason ?? '',
+      enabled: isEnabled(a.id),
+      /** 아직 한 번도 점검하지 않았으면 false */
+      checked: detected.has(a.id),
+      available: usable(a.id),
+      reason: isEnabled(a.id) ? (detected.get(a.id)?.reason ?? '') : '사용 안 함',
+      info: detected.get(a.id)?.info ?? '',
       selected: a.id === selected,
     }));
   }
 
   function snapshot() {
     const cur = selected ? byId(selected) : null;
-    return { open, busy, backend: cur ? { id: cur.id, label: cur.label } : null, log: log.map((e) => ({ ...e })) };
+    return {
+      open,
+      busy,
+      backend: cur ? { id: cur.id, label: cur.label } : null,
+      log: log.map((e) => ({ ...e })),
+      pending: [...pending.values()],
+    };
   }
 
   function emitState() {
@@ -59,18 +94,18 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
     if (log.length > MAX_LOG) log.shift();
   }
 
-  /** 사용 가능한 첫 백엔드를 고른다. 사용자가 직접 고른 것이 아니면 상황에 맞게 바꾼다. */
   function autoSelect() {
-    if (userChose && selected && detected.get(selected)?.ok) return;
-    const order = preferred ? [preferred, ...adapters.map((a) => a.id)] : adapters.map((a) => a.id);
-    const pick = order.find((id) => detected.get(id)?.ok);
-    if (pick) selected = pick;
-    else if (!userChose) selected = null;
+    if (wanted && usable(wanted)) selected = wanted;
+    else if (!(selected && usable(selected))) selected = adapters.map((a) => a.id).find(usable) ?? null;
   }
 
   async function refresh() {
     await Promise.all(
       adapters.map(async (a) => {
+        if (!isEnabled(a.id)) {
+          detected.set(a.id, { ok: false, reason: '사용 안 함' });
+          return;
+        }
         try {
           detected.set(a.id, await a.detect());
         } catch (e) {
@@ -84,11 +119,12 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
 
   /** 사용 가능한 백엔드가 없을 때 사용자에게 보여 줄 안내 */
   function noBackendMessage() {
-    const lines = adapters.map((a) => `· ${a.label}: ${detected.get(a.id)?.reason || '사용할 수 없어요'}`);
+    const lines = adapters.map((a) => `· ${a.label}: ${backends().find((b) => b.id === a.id)?.reason || '사용할 수 없어요'}`);
     return `사용할 수 있는 AI 연결이 없어요.\n${lines.join('\n')}`;
   }
 
-  /** 에이전트 이벤트 → 펫 모션 (think/work/talk/done/error) */
+  // --- 펫 모션 매핑 (think/work/talk/attention/done/error) ---
+
   let anim = '';
   /** @param {string | null} name */
   function setAnim(name) {
@@ -97,11 +133,52 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
     engine.setAgentAnim(name);
   }
 
+  // --- 권한 요청 ---
+
+  /** @param {boolean} value @param {{ focus?: boolean }} [opts] */
+  function setOpen(value, { focus = true } = {}) {
+    if (open === value) return;
+    open = value;
+    engine.setHold(open);
+    engine.poke();
+    onOpenChange?.(open, { focus: value && focus });
+    emitState();
+  }
+
+  /** 정책으로 바로 정할 수 있으면 응답하고, 아니면 사용자에게 묻는다. @param {Extract<import('./adapter.js').AgentEvent, { type: 'tool_request' }>} ev */
+  function onToolRequest(ev) {
+    const adapter = running;
+    if (!adapter) return;
+    const d = decide({ name: ev.name, input: ev.input }, getPolicy());
+    if (d.action !== 'ask') {
+      adapter.respondPermission(ev.id, d.action === 'allow', d.reason);
+      return;
+    }
+    const view = { id: ev.id, ...describeRequest(ev.name, ev.input) };
+    pending.set(ev.id, view);
+    broadcast('perm:request', view);
+    setAnim('attention');
+    // 사용자가 다른 앱을 쓰는 중일 수 있으니 포커스는 가져오지 않고 말풍선만 띄운다.
+    if (!open) setOpen(true, { focus: false });
+    notify?.();
+    emitState();
+  }
+
+  /** 대기 중인 요청을 모두 정리한다 (대화가 끝났거나 중단됨). */
+  function clearPending() {
+    for (const id of pending.keys()) broadcast('perm:resolved', { id, allow: false, auto: true });
+    pending.clear();
+  }
+
+  // --- 대화 ---
+
   /** @param {import('./adapter.js').AgentEvent} ev */
   function handle(ev) {
+    if (ev.type === 'tool_request') return onToolRequest(ev);
     broadcast('agent:event', ev);
     switch (ev.type) {
       case 'status':
+        if (pending.size) break; // 승인 대기 중에는 attention 유지
         if (ev.state === 'thinking') setAnim('think');
         else if (ev.state === 'working') setAnim('work');
         break;
@@ -138,11 +215,11 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
     let finished = false;
     try {
       let adapter = selected ? byId(selected) : null;
-      if (!adapter || !detected.get(adapter.id)?.ok) {
+      if (!adapter || !usable(adapter.id)) {
         await refresh(); // 그 사이에 CLI를 로그인했거나 Ollama를 켰을 수 있다
         adapter = selected ? byId(selected) : null;
       }
-      if (!adapter || !detected.get(adapter.id)?.ok) {
+      if (!adapter || !usable(adapter.id)) {
         handle({ type: 'error', message: noBackendMessage() });
         finished = true;
         return;
@@ -161,11 +238,14 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
     } catch (e) {
       handle({ type: 'error', message: String(/** @type {Error} */ (e).message ?? e) });
     } finally {
+      clearPending();
       running = null;
       busy = false;
       emitState();
     }
   }
+
+  autoSelect();
 
   return {
     refresh,
@@ -176,27 +256,30 @@ export function createAgentHost({ adapters, engine, broadcast, onOpenChange, pre
     get isOpen() {
       return open;
     },
+    setOpen,
 
-    /** @param {boolean} value */
-    setOpen(value) {
-      if (open === value) return;
-      open = value;
-      engine.setHold(open);
-      engine.poke();
-      onOpenChange?.(open);
+    /** 승인 카드에서 사용자가 누른 응답 @param {string} id @param {boolean} allow */
+    respondPermission(id, allow) {
+      if (!pending.has(id)) return;
+      pending.delete(id);
+      running?.respondPermission(id, allow, allow ? undefined : '사용자가 거부했어요. 다른 방법으로 우회하지 말아 주세요.');
+      broadcast('perm:resolved', { id, allow });
+      setAnim(pending.size ? 'attention' : 'work');
       emitState();
     },
 
     abort() {
       running?.abort();
+      clearPending();
     },
 
-    /** @param {string} id */
+    /** 사용자가 고른 AI 연결 @param {string} id */
     select(id) {
       if (!byId(id) || id === selected) return;
+      wanted = id;
       selected = id;
-      userChose = true;
       for (const a of adapters) a.reset?.();
+      onSelect?.(id);
       emitState();
     },
 

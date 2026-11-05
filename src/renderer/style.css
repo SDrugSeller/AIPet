@@ -152,6 +152,52 @@ body {
   }
 }
 
+/* 도구 사용 승인 카드 */
+.perm {
+  align-self: stretch;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--reply-bg);
+  font-size: 12.5px;
+}
+
+.perm pre {
+  margin: 4px 0 6px;
+  max-height: 110px;
+  overflow: auto;
+  font: 11.5px/1.45 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.perm .actions {
+  display: flex;
+  gap: 6px;
+}
+
+.perm button {
+  padding: 3px 14px;
+  font: inherit;
+  color: var(--bubble-fg);
+  background: var(--input-bg);
+  border: 1px solid var(--bubble-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.perm button.allow {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.perm.resolved {
+  opacity: 0.65;
+  border-color: var(--bubble-border);
+}
+
 #composer {
   display: flex;
   align-items: flex-end;

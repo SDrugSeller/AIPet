@@ -1,5 +1,5 @@
 // @ts-check
-import { BrowserWindow, Menu, app, ipcMain, screen } from 'electron';
+import { BrowserWindow, Menu, app, ipcMain, screen, shell } from 'electron';
 import { createPetEngine } from './petEngine.js';
 import { createAgentHost } from './agent/agentHost.js';
 import { createClaudeCodeAdapter } from './agent/claudeCodeAdapter.js';
@@ -11,9 +11,17 @@ import { createOpenAICompatAdapter } from './agent/openaiCompatAdapter.js';
  * (배율이 다른 모니터 사이의 DIP 좌표는 경계에서 끊어지므로 경계에 걸쳐 그리지 않는다).
  * 펫의 행동/위치는 petEngine이 관리하고, 여기서는 창과 IPC, 드래그 입력을 맡는다.
  *
- * @param {{ skin: any, preloadPath: string, rendererPath: string, workDir: string, debug: boolean }} opts
+ * @param {{
+ *   skin: any,
+ *   preloadPath: string,
+ *   rendererPath: string,
+ *   debug: boolean,
+ *   store: ReturnType<typeof import('./store.js').createStore>,
+ *   config: ReturnType<typeof import('./config.js').createConfig>,
+ *   getMenuTemplate: () => Electron.MenuItemConstructorOptions[],
+ * }} opts
  */
-export function createOverlayManager({ skin, preloadPath, rendererPath, workDir, debug }) {
+export function createOverlayManager({ skin, preloadPath, rendererPath, debug, store, config, getMenuTemplate }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
   const headroom = skin.anchor.y * skin.scale;
@@ -29,21 +37,27 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
   });
   const pet = engine.pet;
 
-  // 에이전트 백엔드 (M3: Claude Code CLI + OpenAI 호환). 설정 저장은 M4에서 추가한다.
-  const env = process.env;
+  // 에이전트 백엔드. 설정은 매번 config에서 읽으므로 설정 화면에서 바꾸면 바로 반영된다.
+  /** 대화창을 열 때 키보드 포커스를 가져와도 되는가 (권한 요청으로 자동으로 열린 경우는 아님) */
+  let chatFocus = true;
   const host = createAgentHost({
     adapters: [
-      createClaudeCodeAdapter({ workDir }),
-      createOpenAICompatAdapter({
-        baseUrl: env.AIPET_OPENAI_BASE_URL || 'http://127.0.0.1:11434/v1',
-        model: env.AIPET_OPENAI_MODEL || undefined,
-        apiKey: env.AIPET_OPENAI_KEY || undefined,
-      }),
+      createClaudeCodeAdapter({ getConfig: () => config.claude(), metaDir: config.metaDir }),
+      createOpenAICompatAdapter({ getConfig: () => config.openai() }),
     ],
     engine,
     broadcast: sendAll,
-    onOpenChange: syncChatFocus,
-    preferred: env.AIPET_BACKEND || undefined,
+    onOpenChange: (_open, { focus }) => {
+      chatFocus = focus;
+      syncChatFocus();
+    },
+    isEnabled: (id) => config.isEnabled(id),
+    getPolicy: () => config.policy(),
+    notify: () => {
+      if (store.get().general.sound) shell.beep();
+    },
+    onSelect: (id) => store.update({ backend: { selected: id } }),
+    preferred: process.env.AIPET_BACKEND || store.get().backend.selected,
   });
 
   /** @param {string} channel @param {any} payload */
@@ -59,15 +73,18 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
     const open = host.isOpen;
     for (const [id, win] of windows) {
       if (win.isDestroyed()) continue;
-      const want = open && id === pet.display;
+      const want = open && chatFocus && id === pet.display;
       win.setFocusable(want);
       if (want) {
         win.focus();
         focusDisplay = id;
       }
     }
-    if (!open) focusDisplay = 0;
+    if (!open || !chatFocus) focusDisplay = 0;
   }
+
+  // 펫 표시/숨김 (트레이에서 전환)
+  let visible = store.get().general.visible;
 
   /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 */
   /** @param {number} displayId */
@@ -124,7 +141,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
     }
     sendAll('pet:state', { ...pet });
     // 대화창이 열린 채 펫이 다른 모니터로 가면 포커스도 따라간다.
-    if (host.isOpen && focusDisplay !== pet.display) syncChatFocus();
+    if (host.isOpen && chatFocus && focusDisplay !== pet.display) syncChatFocus();
   }
 
   /** @param {Electron.Display} display */
@@ -157,7 +174,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {
       applyBounds(win, display.bounds);
-      win.showInactive();
+      if (visible) win.showInactive();
     });
     if (debug) {
       win.webContents.on('console-message', (e) => console.log(`[renderer ${display.id}]`, e.message));
@@ -230,6 +247,15 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
   ipcMain.on('chat:abort', (e) => {
     if (fromOverlay(e)) host.abort();
   });
+  // 권한 요청으로 자동으로 열린 말풍선에서 사용자가 입력창을 눌렀다: 이제 키보드 포커스를 준다.
+  ipcMain.on('chat:focus', (e) => {
+    if (!fromOverlay(e) || !host.isOpen) return;
+    chatFocus = true;
+    syncChatFocus();
+  });
+  ipcMain.on('perm:respond', (e, id, allow) => {
+    if (fromOverlay(e) && typeof id === 'string' && typeof allow === 'boolean') host.respondPermission(id, allow);
+  });
 
   ipcMain.on('overlay:set-interactive', (e, interactive) => {
     const id = findDisplayId(e.sender);
@@ -283,21 +309,22 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
     if (id === null) return;
     const win = windows.get(id);
     void host.refresh(); // 다음에 메뉴를 열 때를 위해 최신 상태로 갱신
-    Menu.buildFromTemplate([
-      { label: 'AI 연결', enabled: false },
-      ...host.backends().map((b) => ({
-        label: `${b.label}${b.available ? '' : '  (사용 불가)'}`,
-        type: /** @type {const} */ ('radio'),
-        checked: b.selected,
-        click: () => host.select(b.id),
-      })),
-      { label: '연결 다시 확인', click: () => void host.refresh() },
-      { type: 'separator' },
-      { label: '종료', click: () => app.quit() },
-    ]).popup({ window: win });
+    Menu.buildFromTemplate(getMenuTemplate()).popup({ window: win });
   });
 
   app.on('before-quit', () => host.dispose());
+
+  /** @param {boolean} value */
+  function setVisible(value) {
+    visible = value;
+    if (!value) host.setOpen(false);
+    for (const win of windows.values()) {
+      if (win.isDestroyed()) continue;
+      if (value) win.showInactive();
+      else win.hide();
+    }
+    store.update({ general: { visible: value } });
+  }
 
   // --- 시작 ---
 
@@ -324,4 +351,11 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, workDir,
       void host.send(/** @type {string} */ (process.env.AIPET_AUTOTEST_MSG));
     }, 2500);
   }
+
+  return {
+    host,
+    engine,
+    isVisible: () => visible,
+    setVisible,
+  };
 }

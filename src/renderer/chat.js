@@ -4,9 +4,10 @@
 /**
  * @typedef {{ role: 'user' | 'assistant' | 'error', text: string }} LogEntry
  * @typedef {{ x: number, y: number, w: number, h: number }} Rect
+ * @typedef {{ id: string, title: string, detail: string }} PermRequest
  *
  * @param {any} api  preload에서 노출한 API
- * @param {{ open: boolean, busy: boolean, backend: { label: string } | null, log: LogEntry[] }} initial
+ * @param {{ open: boolean, busy: boolean, backend: { label: string } | null, log: LogEntry[], pending: PermRequest[] }} initial
  */
 export function createChat(api, initial) {
   const el = /** @type {HTMLElement} */ (document.getElementById('bubble'));
@@ -21,6 +22,8 @@ export function createChat(api, initial) {
   let shown = false;
   /** @type {HTMLElement | null} 응답이 채워질 말풍선 (아직 텍스트가 없으면 "…" 표시) */
   let pending = null;
+  /** 승인 대기 중인 카드 @type {Map<string, HTMLElement>} */
+  const cards = new Map();
   /** @type {Rect | null} 화면에 놓인 말풍선의 위치 (호버 판정용) */
   let box = null;
   let layoutKey = '';
@@ -35,6 +38,43 @@ export function createChat(api, initial) {
     while (logEl.children.length > 30) logEl.firstElementChild?.remove();
     logEl.scrollTop = logEl.scrollHeight;
     return m;
+  }
+
+  /** 도구 사용 승인 카드. 내용은 textContent로만 넣는다. @param {PermRequest} req */
+  function addPermCard(req) {
+    if (cards.has(req.id)) return;
+    const card = document.createElement('div');
+    card.className = 'perm';
+    const title = document.createElement('strong');
+    title.textContent = req.title;
+    const detail = document.createElement('pre');
+    detail.textContent = req.detail;
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const allow = document.createElement('button');
+    allow.type = 'button';
+    allow.textContent = '허용';
+    allow.className = 'allow';
+    const deny = document.createElement('button');
+    deny.type = 'button';
+    deny.textContent = '거부';
+    allow.addEventListener('click', () => api.permRespond(req.id, true));
+    deny.addEventListener('click', () => api.permRespond(req.id, false));
+    actions.append(allow, deny);
+    card.append(title, detail, actions);
+    logEl.append(card);
+    logEl.scrollTop = logEl.scrollHeight;
+    cards.set(req.id, card);
+  }
+
+  /** @param {{ id: string, allow: boolean, auto?: boolean }} r */
+  function resolvePermCard(r) {
+    const card = cards.get(r.id);
+    if (!card) return;
+    cards.delete(r.id);
+    card.classList.add('resolved');
+    const actions = card.querySelector('.actions');
+    if (actions) actions.textContent = r.auto ? '취소됐어요' : r.allow ? '허용했어요' : '거부했어요';
   }
 
   function renderMeta() {
@@ -84,6 +124,9 @@ export function createChat(api, initial) {
     if (shown) input.focus();
   });
   closeBtn.addEventListener('click', () => api.chatClose());
+  input.addEventListener('pointerdown', () => api.chatFocus());
+  api.onPermRequest(addPermCard);
+  api.onPermResolved(resolvePermCard);
   new ResizeObserver(() => (sizeDirty = true)).observe(el);
 
   api.onChatState((/** @type {typeof state} */ s) => {
@@ -118,6 +161,7 @@ export function createChat(api, initial) {
 
   // 처음 열린 창에 이미 있는 대화 기록
   for (const e of initial.log) addMessage(e.role, e.text);
+  for (const p of initial.pending ?? []) addPermCard(p);
   renderMeta();
 
   return {

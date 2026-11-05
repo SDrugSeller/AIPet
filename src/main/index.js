@@ -1,9 +1,14 @@
 // @ts-check
-import { app, protocol } from 'electron';
+import { app, protocol, safeStorage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createOverlayManager } from './windows.js';
+import { createConfig } from './config.js';
+import { buildMenuTemplate } from './menu.js';
+import { createSettingsWindow } from './settingsWindow.js';
 import { loadSkin, registerSkinProtocol, SKIN_SCHEME } from './skin.js';
+import { createStore } from './store.js';
+import { createTray } from './tray.js';
+import { createOverlayManager } from './windows.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,20 +19,77 @@ protocol.registerSchemesAsPrivileged([
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // 트레이가 생기기 전(M4)까지는 펫 우클릭 메뉴로 종료한다.
-  // 오버레이 창이 잠시 0개가 되는 경우(디스플레이 재구성)에도 앱이 종료되지 않게 한다.
+  // 창이 모두 닫혀도(디스플레이 재구성 등) 종료하지 않는다. 종료는 트레이/펫 메뉴의 "종료"로 한다.
   app.on('window-all-closed', () => {});
 
   app.whenReady().then(async () => {
     registerSkinProtocol();
     const skin = await loadSkin('default');
-    createOverlayManager({
+    const userData = app.getPath('userData');
+
+    const store = createStore({ file: path.join(userData, 'settings.json'), safeStorage });
+    const config = createConfig({ store, userDataDir: userData });
+
+    /** @type {ReturnType<typeof createOverlayManager>} */
+    let manager;
+    /** @type {ReturnType<typeof createSettingsWindow>} */
+    let settings;
+
+    // 트레이와 펫 우클릭이 같은 메뉴를 쓴다. manager/settings는 아래에서 만들어진 뒤에 호출된다.
+    const getMenuTemplate = () =>
+      buildMenuTemplate({
+        host: manager.host,
+        isVisible: manager.isVisible,
+        setVisible: manager.setVisible,
+        openSettings: () => settings.open(),
+      });
+
+    manager = createOverlayManager({
       skin,
       preloadPath: path.join(here, '../preload/preload.cjs'),
       rendererPath: path.join(here, '../renderer/index.html'),
-      // 펫 전용 작업 폴더 (CLI 대화 기록이 사용자의 프로젝트와 섞이지 않게)
-      workDir: path.join(app.getPath('userData'), 'agent-workspace'),
       debug: process.env.AIPET_DEBUG === '1',
+      store,
+      config,
+      getMenuTemplate,
     });
+
+    settings = createSettingsWindow({
+      store,
+      config,
+      host: manager.host,
+      preloadPath: path.join(here, '../preload/settingsPreload.cjs'),
+      htmlPath: path.join(here, '../settings/index.html'),
+      packaged: app.isPackaged,
+    });
+
+    createTray({
+      iconPath: path.resolve(here, '../../skins', skin.name, skin.animations.idle.sheet),
+      frameSize: skin.frameSize,
+      getMenuTemplate,
+      onToggle: () => manager.setVisible(!manager.isVisible()),
+    });
+
+    // 설정이 바뀔 때마다: 로그인 시 자동 시작 반영, 열려 있는 설정 창 갱신
+    store.onChange((s) => {
+      // 개발 중(electron.exe 직접 실행)에는 시작 프로그램에 등록하지 않는다.
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.launchAtLogin });
+      settings.pushState();
+    });
+
+    // 디버그용: 설정 창을 열고 렌더링 결과를 PNG로 저장 (AIPET_OPEN_SETTINGS=1, AIPET_CAPTURE_DIR)
+    if (process.env.AIPET_DEBUG === '1' && process.env.AIPET_OPEN_SETTINGS === '1') {
+      settings.open();
+      setTimeout(async () => {
+        const w = settings.getWindow();
+        const dir = process.env.AIPET_CAPTURE_DIR;
+        if (!w || !dir) return;
+        const { writeFile } = await import('node:fs/promises');
+        await writeFile(path.join(dir, 'settings.png'), (await w.webContents.capturePage()).toPNG());
+      }, 4000);
+    }
+
+    // 이미 실행 중인데 또 실행하면: 숨겨 둔 펫을 보여 준다.
+    app.on('second-instance', () => manager.setVisible(true));
   });
 }

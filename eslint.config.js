@@ -13,7 +13,7 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: globals.node },
   },
   {
-    files: ['src/renderer/**/*.js'],
+    files: ['src/renderer/**/*.js', 'src/settings/**/*.js'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.browser },
   },
 ];

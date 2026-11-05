@@ -56,3 +56,22 @@ test('알 수 없는 메시지는 무시한다', () => {
   assert.deepEqual(translateClaudeMessage({ type: 'rate_limit_event' }, newState()), []);
   assert.deepEqual(translateClaudeMessage(null, newState()), []);
 });
+
+test('can_use_tool 제어 요청은 tool_request가 되고, 허용 응답용 입력을 기억한다', () => {
+  const st = { sawDelta: false, finished: false, status: null, sessionId: null };
+  const events = translateClaudeMessage(
+    {
+      type: 'control_request',
+      request_id: 'r-1',
+      request: { subtype: 'can_use_tool', tool_name: 'Write', input: { file_path: 'a.txt', content: 'hi' } },
+    },
+    /** @type {any} */ (st),
+  );
+  assert.deepEqual(events, [{ type: 'tool_request', id: 'r-1', name: 'Write', input: { file_path: 'a.txt', content: 'hi' } }]);
+  assert.deepEqual(/** @type {any} */ (st).requests.get('r-1'), { file_path: 'a.txt', content: 'hi' });
+});
+
+test('can_use_tool이 아닌 제어 요청은 무시한다', () => {
+  const events = translateClaudeMessage({ type: 'control_request', request_id: 'r-2', request: { subtype: 'hook_callback' } }, newState());
+  assert.deepEqual(events, []);
+});
