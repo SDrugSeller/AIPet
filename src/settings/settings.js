@@ -425,4 +425,49 @@ api.onState((/** @type {any} */ next) => {
   render();
 });
 
+// --- 탭 ---
+
+const tabButtons = /** @type {HTMLElement[]} */ ([...document.querySelectorAll('[role="tab"]')]);
+
+/** @param {string} id 탭 id ("ai", "persona", ...) */
+function selectTab(id) {
+  for (const t of tabButtons) {
+    const on = t.id === `tab-${id}`;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+    const panel = document.getElementById(/** @type {string} */ (t.getAttribute('aria-controls')));
+    if (panel) panel.hidden = !on;
+  }
+  window.scrollTo({ top: 0 });
+  try {
+    localStorage.setItem('aipet.settings.tab', id);
+  } catch {
+    // 저장소를 못 써도 탭 전환에는 문제없다
+  }
+}
+
+for (const t of tabButtons) {
+  t.addEventListener('click', () => selectTab(t.id.replace('tab-', '')));
+  // 화살표 키로 탭 이동 (접근성)
+  t.addEventListener('keydown', (e) => {
+    const i = tabButtons.indexOf(t);
+    const next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabButtons.length - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    const target = tabButtons[(next + tabButtons.length) % tabButtons.length];
+    target.focus();
+    selectTab(target.id.replace('tab-', ''));
+  });
+}
+
+{
+  let last = null;
+  try {
+    last = localStorage.getItem('aipet.settings.tab');
+  } catch {
+    // 무시
+  }
+  if (last && tabButtons.some((t) => t.id === `tab-${last}`)) selectTab(last);
+}
+
 render();

@@ -117,9 +117,11 @@ if (!app.requestSingleInstanceLock()) {
         const w = settings.getWindow();
         const dir = process.env.AIPET_CAPTURE_DIR;
         if (!w || !dir) return;
-        // AIPET_SETTINGS_SCROLL=<요소 id>: 그 요소가 보이도록 스크롤한 뒤 캡처한다
+        // AIPET_SETTINGS_SCROLL=<요소 id>: 그 요소가 있는 탭으로 전환하고 보이도록 스크롤한 뒤 캡처한다
         if (process.env.AIPET_SETTINGS_SCROLL) {
-          await w.webContents.executeJavaScript(`document.getElementById(${JSON.stringify(process.env.AIPET_SETTINGS_SCROLL)})?.scrollIntoView()`);
+          await w.webContents.executeJavaScript(
+            `(() => { const el = document.getElementById(${JSON.stringify(process.env.AIPET_SETTINGS_SCROLL)}); if (!el) return; const p = el.closest('[role=tabpanel]'); if (p) document.getElementById(p.getAttribute('aria-labelledby'))?.click(); el.scrollIntoView(); })()`,
+          );
           await new Promise((r) => setTimeout(r, 300));
         }
         const { writeFile } = await import('node:fs/promises');

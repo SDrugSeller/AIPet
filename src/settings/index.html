@@ -14,6 +14,15 @@
     <main>
       <h1>AIPet 설정</h1>
 
+      <nav class="tabs" role="tablist" aria-label="설정 항목">
+        <button type="button" class="tab" role="tab" id="tab-ai" aria-controls="panel-ai" aria-selected="true" tabindex="0">AI 연결</button>
+        <button type="button" class="tab" role="tab" id="tab-persona" aria-controls="panel-persona" aria-selected="false" tabindex="-1">말투</button>
+        <button type="button" class="tab" role="tab" id="tab-pet" aria-controls="panel-pet" aria-selected="false" tabindex="-1">펫</button>
+        <button type="button" class="tab" role="tab" id="tab-notice" aria-controls="panel-notice" aria-selected="false" tabindex="-1">알림</button>
+        <button type="button" class="tab" role="tab" id="tab-general" aria-controls="panel-general" aria-selected="false" tabindex="-1">일반</button>
+      </nav>
+
+      <div class="panel" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" >
       <section>
         <h2>AI 연결</h2>
         <p class="hint">
@@ -67,6 +76,22 @@
       </section>
 
       <section>
+        <h2>권한</h2>
+        <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
+        <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
+          <div class="inline">
+            <input type="text" id="workDir" readonly />
+            <button type="button" id="pickDir">선택…</button>
+            <button type="button" id="resetDir">기본값</button>
+          </div>
+        </div>
+        <p class="muted">파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.</p>
+      </section>
+
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-persona" aria-labelledby="tab-persona" hidden>
+      <section>
         <h2>말투</h2>
         <p class="hint">펫이 어떤 말투와 성격으로 대답할지 정하는 프롬프트예요. 말투 하나가 텍스트 파일 하나이고, 아래 폴더에 저장돼요.</p>
         <label class="field">말투 선택
@@ -89,65 +114,13 @@
         <p class="muted">다음 메시지부터 적용돼요. Claude Code는 말투를 바꾸면 새 대화로 시작해서 이전 대화 내용은 기억하지 못해요.</p>
       </section>
 
-      <section>
-        <h2>권한</h2>
-        <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
-        <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
-          <div class="inline">
-            <input type="text" id="workDir" readonly />
-            <button type="button" id="pickDir">선택…</button>
-            <button type="button" id="resetDir">기본값</button>
-          </div>
-        </div>
-        <p class="muted">파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.</p>
-      </section>
+      </div>
 
+      <div class="panel" role="tabpanel" id="panel-pet" aria-labelledby="tab-pet" hidden>
       <section>
-        <h2>행동</h2>
-        <label class="row">
-          <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
-          <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
-        </label>
-        <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
-      </section>
-
-      <section>
-        <h2>먼저 말 걸기</h2>
-        <p class="hint">
-          펫이 부르지 않았는데 말풍선으로 알려 주는 기능이에요. 정해진 문구나 이미 받은 답을 보여 줄 뿐,
-          <strong>AI를 호출하지 않아서 토큰을 쓰지 않아요.</strong>
-          방해 금지일 때, 전체화면 앱이나 발표 중일 때, 대화 중일 때는 말하지 않아요.
-        </p>
-        <label class="row"><input type="checkbox" data-path="spontaneous.enabled" /> <strong>먼저 말 걸기 사용</strong> <span class="muted">(끄면 아래 항목이 모두 멈춰요)</span></label>
-        <div id="spontaneousOptions">
-        <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
-        <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
-        <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
-        <label class="field">쉬지 않고 쓴 시간이 이만큼(분) 넘으면
-          <input type="number" min="5" max="600" data-path="spontaneous.breakAfterMin" />
-        </label>
-        <label class="field">쉬라고 할 때 하는 말
-          <input type="text" data-path="spontaneous.breakMessage" maxlength="200" />
-        </label>
-        <label class="field">먼저 말을 거는 최소 간격(분)
-          <input type="number" min="1" max="600" data-path="spontaneous.cooldownMin" />
-        </label>
-        <div class="field">정해진 시각 알림
-          <div id="reminders"></div>
-          <button type="button" id="addReminder">알림 추가</button>
-        </div>
-        </div>
-      </section>
-
-      <section>
-        <h2>일반</h2>
+        <h2>스킨</h2>
         <label class="field">펫 스킨 <span class="muted">(바꾸면 앱이 다시 시작돼요)</span>
           <select id="skin"></select>
-        </label>
-        <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
-        <label class="row">
-          <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
-          <span class="muted" id="loginNote"></span>
         </label>
       </section>
 
@@ -178,6 +151,60 @@
           <button type="button" id="tuneReset">원래대로</button>
         </div>
       </section>
+
+      <section>
+        <h2>행동</h2>
+        <label class="row">
+          <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
+          <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
+        </label>
+        <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
+      </section>
+
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-notice" aria-labelledby="tab-notice" hidden>
+      <section>
+        <h2>먼저 말 걸기</h2>
+        <p class="hint">
+          펫이 부르지 않았는데 말풍선으로 알려 주는 기능이에요. 정해진 문구나 이미 받은 답을 보여 줄 뿐,
+          <strong>AI를 호출하지 않아서 토큰을 쓰지 않아요.</strong>
+          방해 금지일 때, 전체화면 앱이나 발표 중일 때, 대화 중일 때는 말하지 않아요.
+        </p>
+        <label class="row"><input type="checkbox" data-path="spontaneous.enabled" /> <strong>먼저 말 걸기 사용</strong> <span class="muted">(끄면 아래 항목이 모두 멈춰요)</span></label>
+        <div id="spontaneousOptions">
+        <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
+        <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
+        <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
+        <label class="field">쉬지 않고 쓴 시간이 이만큼(분) 넘으면
+          <input type="number" min="5" max="600" data-path="spontaneous.breakAfterMin" />
+        </label>
+        <label class="field">쉬라고 할 때 하는 말
+          <input type="text" data-path="spontaneous.breakMessage" maxlength="200" />
+        </label>
+        <label class="field">먼저 말을 거는 최소 간격(분)
+          <input type="number" min="1" max="600" data-path="spontaneous.cooldownMin" />
+        </label>
+        <div class="field">정해진 시각 알림
+          <div id="reminders"></div>
+          <button type="button" id="addReminder">알림 추가</button>
+        </div>
+        </div>
+      </section>
+
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" hidden>
+      <section>
+        <h2>앱 동작</h2>
+        <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
+        <label class="row">
+          <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
+          <span class="muted" id="loginNote"></span>
+        </label>
+      </section>
+
+      </div>
 
       <footer><span id="saved" aria-live="polite"></span></footer>
     </main>
