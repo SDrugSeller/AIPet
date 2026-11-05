@@ -31,3 +31,14 @@ test('이동이 없으면 제자리, 시작 전 시각이면 시작 위치', () 
   const pet = { ...base, move: /** @type {const} */ ({ kind: 'walk', x1: 300, speed: 50 }) };
   assert.deepEqual(positionAt(pet, 0), { x: 100, y: 500 });
 });
+
+test('jump: 포물선으로 목표에 도착하고, 중간에 위로 솟는다', () => {
+  const pet = { x: 100, y: 800, t0: 0, move: /** @type {const} */ ({ kind: 'jump', x1: 300, y1: 400, dur: 1000, height: 60 }) };
+  assert.deepEqual(positionAt(pet, 0), { x: 100, y: 800 });
+  const mid = positionAt(pet, 500);
+  assert.equal(mid.x, 200);
+  assert.equal(mid.y, 600 - 60); // 직선 경로의 중간(600)보다 height만큼 높다
+  assert.deepEqual(positionAt(pet, 1000), { x: 300, y: 400 });
+  assert.deepEqual(positionAt(pet, 5000), { x: 300, y: 400 }); // 도착한 뒤에는 멈춘다
+  assert.equal(moveDuration(pet), 1000);
+});

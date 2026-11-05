@@ -17,9 +17,15 @@ export function createChat(api, initial) {
   const input = /** @type {HTMLTextAreaElement} */ (document.getElementById('input'));
   const sendBtn = /** @type {HTMLButtonElement} */ (document.getElementById('send'));
   const closeBtn = /** @type {HTMLButtonElement} */ (document.getElementById('close'));
+  const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
+  const notice = /** @type {HTMLElement} */ (document.getElementById('notice'));
+  const noticeText = /** @type {HTMLElement} */ (document.getElementById('noticeText'));
 
   let state = initial;
   let shown = false;
+  /** 알림 말풍선이 떠 있어야 하는가 (main이 시간을 재서 보이고 숨긴다) */
+  let noticeWanted = false;
+  let noticeShown = false;
   /** @type {HTMLElement | null} 응답이 채워질 말풍선 (아직 텍스트가 없으면 "…" 표시) */
   let pending = null;
   /** 승인 대기 중인 카드 @type {Map<string, HTMLElement>} */
@@ -128,6 +134,20 @@ export function createChat(api, initial) {
   api.onPermRequest(addPermCard);
   api.onPermResolved(resolvePermCard);
   new ResizeObserver(() => (sizeDirty = true)).observe(el);
+  new ResizeObserver(() => (sizeDirty = true)).observe(notice);
+
+  // 알림 말풍선: 글자는 textContent로만 넣는다
+  api.onNoticeShow((/** @type {{ text: string }} */ n) => {
+    noticeText.textContent = n.text;
+    noticeWanted = true;
+    layoutKey = '';
+  });
+  api.onNoticeHide(() => {
+    noticeWanted = false;
+  });
+  $('noticeOpen').addEventListener('click', () => api.noticeAction('open'));
+  $('noticeClose').addEventListener('click', () => api.noticeAction('close'));
+  noticeText.addEventListener('click', () => api.noticeAction('open')); // 말풍선을 누르면 대화로 이어진다
 
   api.onChatState((/** @type {typeof state} */ s) => {
     state = { ...state, open: s.open, busy: s.busy, backend: s.backend };
@@ -178,20 +198,29 @@ export function createChat(api, initial) {
         box = null;
         if (visible) focusInput();
       }
-      if (!visible || !hit) return;
+      // 대화창이 열려 있으면 알림 말풍선은 필요 없다
+      const noticeVisible = !!hit && !state.open && noticeWanted;
+      if (noticeVisible !== noticeShown) {
+        noticeShown = noticeVisible;
+        notice.hidden = !noticeVisible;
+        layoutKey = '';
+        box = null;
+      }
+      const active = visible ? el : noticeVisible ? notice : null;
+      if (!active || !hit) return;
 
       const key = `${hit.x.toFixed(1)}|${hit.y.toFixed(1)}|${hit.w}|${viewW}|${viewH}`;
       if (key === layoutKey && !sizeDirty) return;
       layoutKey = key;
       sizeDirty = false;
 
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
+      const w = active.offsetWidth;
+      const h = active.offsetHeight;
       const cx = hit.x + hit.w / 2;
       const left = Math.min(Math.max(cx - w / 2, 8), Math.max(8, viewW - w - 8));
       const top = Math.max(8, hit.y - h - 10);
-      el.style.transform = `translate(${left}px, ${top}px)`;
-      el.style.setProperty('--tail', `${Math.min(Math.max(cx - left, 18), w - 18)}px`);
+      active.style.transform = `translate(${left}px, ${top}px)`;
+      active.style.setProperty('--tail', `${Math.min(Math.max(cx - left, 18), w - 18)}px`);
       box = { x: left, y: top, w, h };
     },
 

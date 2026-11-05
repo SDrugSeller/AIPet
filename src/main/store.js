@@ -38,10 +38,30 @@ export const DEFAULTS = {
     /** 에이전트가 접근할 수 있는 작업 폴더. 비어 있으면 앱 전용 폴더 */
     workDir: '',
   },
+  behavior: {
+    /** 활성 창 위에 올라가기 (창의 위치/크기만 읽는다. 제목·내용은 읽지 않는다) */
+    sitOnWindows: true,
+    /** 전체화면 앱(영상, 게임, 발표)이 활성일 때는 펫을 숨긴다 */
+    hideOnFullscreen: true,
+  },
+  spontaneous: {
+    /** 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 준다 */
+    notifyDone: true,
+    /** 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말한다 (기본 꺼짐: 먼저 말을 거는 기능은 옵트인) */
+    breakReminder: false,
+    breakAfterMin: 60,
+    breakMessage: '벌써 꽤 오래 쉬지 않았어요. 잠깐 일어나서 스트레칭하는 건 어때요?',
+    /** 먼저 말을 거는 사이의 최소 간격(분) */
+    cooldownMin: 30,
+    /** 정해진 시각의 알림 */
+    reminders: /** @type {{ time: string, text: string, enabled: boolean }[]} */ ([]),
+  },
   general: {
     /** 펫 스킨 폴더 이름 (바꾸면 앱이 다시 시작된다) */
     skin: 'default',
     launchAtLogin: false,
+    /** 방해 금지: 먼저 말을 걸지 않고 알림 말풍선도 띄우지 않는다 */
+    doNotDisturb: false,
     /** 승인 요청 시 알림음 */
     sound: true,
     /** 펫 표시 여부 (트레이에서 숨김/보이기) */
@@ -67,6 +87,22 @@ const httpUrlOrEmpty = (v) => {
   }
 };
 
+/** @param {number} min @param {number} max 정수 범위 */
+const int = (min, max) => (/** @type {unknown} */ v) => Number.isInteger(v) && /** @type {number} */ (v) >= min && /** @type {number} */ (v) <= max;
+/** 정해진 시각 알림 목록: 최대 20개, 각 항목의 형식이 모두 맞아야 저장한다. @param {unknown} v */
+const reminders = (v) =>
+  Array.isArray(v) &&
+  v.length <= 20 &&
+  v.every(
+    (r) =>
+      isObject(r) &&
+      typeof r.time === 'string' &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) &&
+      typeof r.text === 'string' &&
+      r.text.length <= 200 &&
+      typeof r.enabled === 'boolean',
+  );
+
 /** 키마다 값을 검증하는 함수. 여기 없는 키는 저장하지 않는다. */
 const SPEC = {
   backend: { selected: (/** @type {unknown} */ v) => v === null || (typeof v === 'string' && v.length <= 64) },
@@ -76,7 +112,22 @@ const SPEC = {
   },
   persona: { selected: (/** @type {unknown} */ v) => typeof v === 'string' && /^[^\\/:*?"<>|]{1,60}\.txt$/.test(v) && !v.includes('..') },
   permissions: { autoAllowRead: isBool, workDir: str(1000) },
-  general: { skin: (/** @type {unknown} */ v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v), launchAtLogin: isBool, sound: isBool, visible: isBool },
+  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
+  spontaneous: {
+    notifyDone: isBool,
+    breakReminder: isBool,
+    breakAfterMin: int(5, 600),
+    breakMessage: str(200),
+    cooldownMin: int(1, 600),
+    reminders,
+  },
+  general: {
+    skin: (/** @type {unknown} */ v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v),
+    launchAtLogin: isBool,
+    doNotDisturb: isBool,
+    sound: isBool,
+    visible: isBool,
+  },
 };
 
 /** @param {any} v */

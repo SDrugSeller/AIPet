@@ -8,15 +8,18 @@ import { app } from 'electron';
  *   isVisible: () => boolean,
  *   setVisible: (v: boolean) => void,
  *   openSettings: () => void,
+ *   isDnd: () => boolean,
+ *   setDnd: (v: boolean) => void,
  *   listPersonas: () => { id: string, name: string, selected: boolean }[],
  *   selectPersona: (id: string) => void,
  * }} deps
  * @returns {Electron.MenuItemConstructorOptions[]}
  */
-export function buildMenuTemplate({ host, isVisible, setVisible, openSettings, listPersonas, selectPersona }) {
+export function buildMenuTemplate({ host, isVisible, setVisible, openSettings, listPersonas, selectPersona, isDnd, setDnd }) {
   const personas = listPersonas();
   return [
     { label: isVisible() ? '펫 숨기기' : '펫 보이기', click: () => setVisible(!isVisible()) },
+    { label: '방해 금지 (먼저 말 걸지 않기)', type: 'checkbox', checked: isDnd(), click: () => setDnd(!isDnd()) },
     { type: 'separator' },
     { label: 'AI 연결', enabled: false },
     ...host.backends().map((b) => ({

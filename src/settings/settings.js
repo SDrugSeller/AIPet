@@ -94,6 +94,8 @@ function render() {
   /** @type {HTMLButtonElement} */ ($('#personaDelete')).disabled = pr.items.length <= 1;
   $('#personaDir').textContent = `저장 위치: ${pr.dir}`;
 
+  renderReminders();
+
   /** @type {HTMLInputElement} */ ($('#openaiBaseUrl')).placeholder = state.defaults.openaiBaseUrl;
   /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
   $('#keyStatus').textContent = state.hasKey.openaiKey
@@ -115,6 +117,79 @@ function render() {
   }
 }
 
+// --- 정해진 시각 알림 ---
+
+/** 화면의 알림 줄들에서 현재 값을 모은다 */
+function collectReminders() {
+  return [...document.querySelectorAll('#reminders .reminder')]
+    .map((row) => ({
+      time: /** @type {HTMLInputElement} */ (row.querySelector('input[type="time"]')).value,
+      text: /** @type {HTMLInputElement} */ (row.querySelector('input[type="text"]')).value.trim(),
+      enabled: /** @type {HTMLInputElement} */ (row.querySelector('input[type="checkbox"]')).checked,
+    }))
+    .filter((r) => /^\d\d:\d\d$/.test(r.time)); // 시각이 비어 있는 줄은 저장하지 않는다
+}
+
+/** @type {NodeJS.Timeout | undefined} */
+let reminderTimer;
+function saveReminders() {
+  clearTimeout(reminderTimer);
+  save(toPatch('spontaneous.reminders', collectReminders()));
+}
+
+function renderReminders() {
+  const box = $('#reminders');
+  const list = state.settings.spontaneous.reminders;
+  const sig = JSON.stringify(list);
+  if (box.dataset.sig === sig || box.contains(document.activeElement)) return; // 바뀐 게 없거나 입력 중
+  box.dataset.sig = sig;
+  box.replaceChildren(
+    ...list.map((/** @type {any} */ r) => {
+      const row = document.createElement('div');
+      row.className = 'reminder';
+
+      const time = document.createElement('input');
+      time.type = 'time';
+      time.value = r.time;
+
+      const text = document.createElement('input');
+      text.type = 'text';
+      text.value = r.text;
+      text.maxLength = 200;
+      text.placeholder = '알릴 말';
+
+      const on = document.createElement('input');
+      on.type = 'checkbox';
+      on.checked = r.enabled;
+      on.title = '사용';
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '삭제';
+      del.addEventListener('click', () => {
+        row.remove();
+        saveReminders();
+      });
+
+      time.addEventListener('change', saveReminders);
+      on.addEventListener('change', saveReminders);
+      text.addEventListener('input', () => {
+        clearTimeout(reminderTimer);
+        reminderTimer = setTimeout(saveReminders, 700);
+      });
+      text.addEventListener('change', saveReminders);
+
+      row.append(time, text, on, del);
+      return row;
+    }),
+  );
+}
+
+$('#addReminder').addEventListener('click', () => {
+  const next = [...collectReminders(), { time: '12:00', text: '점심 먹을 시간이에요!', enabled: true }];
+  if (next.length <= 20) save(toPatch('spontaneous.reminders', next));
+});
+
 // --- 입력 연결 ---
 
 for (const el of document.querySelectorAll('[data-path]')) {
@@ -128,6 +203,10 @@ for (const el of document.querySelectorAll('[data-path]')) {
     let timer;
     const commit = () => {
       clearTimeout(timer);
+      if (input.type === 'number') {
+        if (input.value !== '' && Number.isFinite(Number(input.value))) save(toPatch(path, Number(input.value)));
+        return;
+      }
       save(toPatch(path, input.value.trim()));
     };
     input.addEventListener('input', () => {

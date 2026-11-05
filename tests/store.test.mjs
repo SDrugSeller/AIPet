@@ -126,3 +126,41 @@ test('스킨 이름은 안전한 문자만 허용한다 (경로 조작 방지)',
     assert.equal(s.get().general.skin, 'genba-cat', String(bad));
   }
 });
+
+test('행동/알림 설정: 범위와 형식을 검증한다', () => {
+  const { file } = tmpFile();
+  const s = createStore({ file, safeStorage: fakeSafe() });
+  assert.equal(s.get().behavior.sitOnWindows, true);
+  assert.equal(s.get().spontaneous.breakReminder, false); // 먼저 말 거는 기능은 옵트인
+  assert.equal(s.get().general.doNotDisturb, false);
+
+  s.update({ spontaneous: { breakAfterMin: 90, cooldownMin: 15 }, general: { doNotDisturb: true } });
+  assert.equal(s.get().spontaneous.breakAfterMin, 90);
+  assert.equal(s.get().general.doNotDisturb, true);
+
+  for (const bad of [0, 4, 601, 1.5, '60', NaN]) {
+    s.update({ spontaneous: { breakAfterMin: bad } });
+    assert.equal(s.get().spontaneous.breakAfterMin, 90, String(bad));
+  }
+});
+
+test('정해진 시각 알림 목록: 형식이 맞아야 저장되고 재시작 후에도 유지된다', () => {
+  const { file } = tmpFile();
+  const s = createStore({ file, safeStorage: fakeSafe() });
+  const good = [{ time: '12:30', text: '점심!', enabled: true }];
+  s.update({ spontaneous: { reminders: good } });
+  assert.deepEqual(s.get().spontaneous.reminders, good);
+  assert.deepEqual(createStore({ file, safeStorage: fakeSafe() }).get().spontaneous.reminders, good);
+
+  for (const bad of [
+    [{ time: '25:00', text: 'x', enabled: true }],
+    [{ time: '9:00', text: 'x', enabled: true }],
+    [{ time: '12:30', text: 'x'.repeat(201), enabled: true }],
+    [{ time: '12:30', text: 'x' }],
+    'not an array',
+    Array.from({ length: 21 }, () => ({ time: '12:00', text: 'x', enabled: true })),
+  ]) {
+    s.update({ spontaneous: { reminders: bad } });
+    assert.deepEqual(s.get().spontaneous.reminders, good);
+  }
+});

@@ -22,6 +22,7 @@ const MAX_LOG = 20;
  *   getPolicy?: () => { autoAllowRead: boolean, workDir: string },
  *   notify?: () => void,
  *   onSelect?: (adapterId: string) => void,
+ *   onTaskFinished?: (result: { ok: boolean, text: string }) => void,
  *   preferred?: string | null,
  * }} opts
  */
@@ -34,6 +35,7 @@ export function createAgentHost({
   getPolicy = () => ({ autoAllowRead: true, workDir: process.cwd() }),
   notify,
   onSelect,
+  onTaskFinished,
   preferred = null,
 }) {
   /** @type {Map<string, import('./adapter.js').DetectResult>} */
@@ -53,6 +55,8 @@ export function createAgentHost({
   const pending = new Map();
   /** @type {import('./adapter.js').AgentAdapter | null} */
   let running = null;
+  /** 이번 대화의 결과 (끝났을 때 대화창이 닫혀 있으면 알려 주기 위해) */
+  const turn = { ok: /** @type {boolean | null} */ (null), text: '', aborted: false };
 
   /** @param {string} id */
   const byId = (id) => adapters.find((a) => a.id === id) ?? null;
@@ -183,6 +187,7 @@ export function createAgentHost({
         else if (ev.state === 'working') setAnim('work');
         break;
       case 'text': {
+        turn.text += ev.delta;
         const last = log[log.length - 1];
         if (last?.role === 'assistant') last.text += ev.delta;
         else pushLog({ role: 'assistant', text: ev.delta });
@@ -190,10 +195,13 @@ export function createAgentHost({
         break;
       }
       case 'done':
+        turn.ok = true;
         anim = '';
         engine.setAgentAnim('done', { once: true });
         break;
       case 'error':
+        turn.ok = false;
+        turn.text = ev.message;
         pushLog({ role: 'error', text: ev.message });
         anim = '';
         engine.setAgentAnim('error', { once: true });
@@ -206,6 +214,9 @@ export function createAgentHost({
     text = String(text ?? '').trim().slice(0, 8000);
     if (!text || busy) return;
     busy = true;
+    turn.ok = null;
+    turn.text = '';
+    turn.aborted = false;
     pushLog({ role: 'user', text });
     broadcast('chat:user', { text });
     emitState();
@@ -242,6 +253,8 @@ export function createAgentHost({
       running = null;
       busy = false;
       emitState();
+      // 대화창을 닫아 둔 사이에 끝났다면 사용자는 결과를 못 봤으니 알린다. (중단한 경우는 제외)
+      if (!open && !turn.aborted && turn.ok !== null) onTaskFinished?.({ ok: turn.ok, text: turn.text });
     }
   }
 
@@ -269,6 +282,7 @@ export function createAgentHost({
     },
 
     abort() {
+      turn.aborted = true;
       running?.abort();
       clearPending();
     },

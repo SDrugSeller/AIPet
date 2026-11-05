@@ -1,6 +1,9 @@
 // @ts-check
-import { BrowserWindow, Menu, app, ipcMain, screen, shell } from 'electron';
+import { BrowserWindow, Menu, app, ipcMain, powerMonitor, screen, shell } from 'electron';
+import { bodyMetrics, computePerch } from './perch.js';
 import { createPetEngine } from './petEngine.js';
+import { createNotifier } from './spontaneous.js';
+import { createWindowWatcher } from './windowWatcher.js';
 import { createAgentHost } from './agent/agentHost.js';
 import { createClaudeCodeAdapter } from './agent/claudeCodeAdapter.js';
 import { createOpenAICompatAdapter } from './agent/openaiCompatAdapter.js';
@@ -47,10 +50,13 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
     ],
     engine,
     broadcast: sendAll,
-    onOpenChange: (_open, { focus }) => {
+    onOpenChange: (open, { focus }) => {
       chatFocus = focus;
+      if (open) hideNotice();
       syncChatFocus();
     },
+    // 대화창을 닫아 둔 사이 응답이 끝났다. 완료 모션(done)이 보이도록 잠깐 뒤에 알린다.
+    onTaskFinished: (r) => setTimeout(() => notifier.onTaskDone(r), 1000),
     isEnabled: (id) => config.isEnabled(id),
     getPolicy: () => config.policy(),
     notify: () => {
@@ -85,6 +91,47 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
 
   // 펫 표시/숨김 (트레이에서 전환)
   let visible = store.get().general.visible;
+  /** 전체화면 앱이 활성이라 잠시 숨겨 둔 상태 (사용자가 정한 visible 설정과는 별개) */
+  let suspended = false;
+
+  // --- 알림 말풍선 (자발적 발화) ---
+  /** 전체화면 앱/발표 중인가: 이때는 먼저 말을 걸지 않는다 */
+  const quiet = { fullscreen: false };
+  let noticeActive = false;
+  /** @type {NodeJS.Timeout | null} */
+  let noticeTimer = null;
+
+  /** @param {{ text: string, kind: string }} n */
+  function showNotice({ text, kind }) {
+    if (host.isOpen) return; // 이미 대화창이 열려 있다
+    noticeActive = true;
+    sendAll('notice:show', { text, kind });
+    engine.setAgentAnim('attention'); // 펫이 알림을 알린다
+    if (kind !== 'done' && store.get().general.sound) shell.beep(); // 사용자가 시킨 일의 결과는 조용히, 먼저 거는 말에는 소리
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(hideNotice, 12_000);
+  }
+
+  function hideNotice() {
+    if (!noticeActive) return;
+    noticeActive = false;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = null;
+    sendAll('notice:hide', null);
+    if (!host.snapshot().busy) engine.setAgentAnim(null);
+  }
+
+  const notifier = createNotifier({
+    getSettings: () => store.get().spontaneous,
+    getQuiet: () => ({
+      dnd: store.get().general.doNotDisturb,
+      fullscreen: quiet.fullscreen,
+      chatActive: host.isOpen || host.snapshot().busy,
+      hidden: !visible || suspended,
+    }),
+    idleSeconds: () => powerMonitor.getSystemIdleTime(),
+    show: showNotice,
+  });
 
   /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 */
   /** @param {number} displayId */
@@ -174,7 +221,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {
       applyBounds(win, display.bounds);
-      if (visible) win.showInactive();
+      if (visible && !suspended) win.showInactive();
     });
     if (debug) {
       win.webContents.on('console-message', (e) => console.log(`[renderer ${display.id}]`, e.message));
@@ -217,6 +264,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
     }
     clampPet();
     engine.relayout(); // 바닥에 다시 세우고 broadcast
+    applyForeground();
   }
 
   // --- IPC (화이트리스트 채널만, 보낸 쪽이 우리 오버레이 창인지 확인) ---
@@ -252,6 +300,11 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
     if (!fromOverlay(e) || !host.isOpen) return;
     chatFocus = true;
     syncChatFocus();
+  });
+  ipcMain.on('notice:action', (e, action) => {
+    if (!fromOverlay(e)) return;
+    hideNotice();
+    if (action === 'open') host.setOpen(true); // "대화하기"
   });
   ipcMain.on('perm:respond', (e, id, allow) => {
     if (fromOverlay(e) && typeof id === 'string' && typeof allow === 'boolean') host.respondPermission(id, allow);
@@ -312,19 +365,82 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
     Menu.buildFromTemplate(getMenuTemplate()).popup({ window: win });
   });
 
-  app.on('before-quit', () => host.dispose());
+  /** 모든 오버레이 창을 보이거나 숨긴다. */
+  function applyVisibility() {
+    const show = visible && !suspended;
+    for (const win of windows.values()) {
+      if (win.isDestroyed()) continue;
+      if (show) win.showInactive();
+      else win.hide();
+    }
+  }
 
   /** @param {boolean} value */
   function setVisible(value) {
     visible = value;
     if (!value) host.setOpen(false);
-    for (const win of windows.values()) {
-      if (win.isDestroyed()) continue;
-      if (value) win.showInactive();
-      else win.hide();
-    }
+    applyVisibility();
     store.update({ general: { visible: value } });
   }
+
+  /** @param {boolean} value */
+  function setSuspended(value) {
+    if (suspended === value) return;
+    suspended = value;
+    if (value) {
+      host.setOpen(false);
+      hideNotice();
+    }
+    applyVisibility();
+  }
+
+  // --- 활성 창 인식 ---
+
+  /** 가장 최근에 받은 활성 창 정보 (물리 픽셀) */
+  /** @type {import('./windowWatcher.js').ForegroundInfo | null} */
+  let foreground = null;
+  const metrics = bodyMetrics(skin);
+
+  /** 활성 창 정보로 "전체화면이라 숨길지", "올라갈 수 있는 창인지"를 판단해 반영한다. */
+  function applyForeground() {
+    const info = foreground;
+    const s = store.get();
+    quiet.fullscreen = !!info && (info.fs === 1 || info.busy === 1);
+    setSuspended(s.behavior.hideOnFullscreen && !!info && info.fs === 1);
+
+    /** @type {import('./perch.js').Perch | null} */
+    let perch = null;
+    if (s.behavior.sitOnWindows && !suspended && info && !info.none && info.hwnd) {
+      // 도우미는 물리 픽셀을 주므로 Electron의 DIP 좌표로 바꾼다 (모니터마다 배율이 다를 수 있다).
+      const rect = screen.screenToDipRect(null, { x: info.x ?? 0, y: info.y ?? 0, width: info.w ?? 0, height: info.h ?? 0 });
+      perch = computePerch(
+        { id: info.hwnd, rect, minimized: !!info.min, maximized: !!info.max, fullscreen: info.fs === 1 },
+        screen.getAllDisplays(),
+        metrics,
+      );
+      if (debug) console.log('[window]', info.proc, JSON.stringify(rect), '→', perch ? `올라갈 수 있음 top=${perch.top} display=${perch.display}` : '올라갈 수 없음');
+    }
+    engine.setTarget(perch);
+  }
+
+  const watcher = createWindowWatcher({
+    onChange: (info) => {
+      if (debug) console.log('[watch] 활성 창', info.proc ?? '(없음)', info.cls ?? '', info.fs ? 'fullscreen' : '', info.busy ? 'busy' : '');
+      foreground = info;
+      applyForeground();
+    },
+    onLog: (msg) => debug && console.log('[watch]', msg),
+  });
+  store.onChange(applyForeground); // 설정(올라가기/전체화면 숨김)이 바뀌면 바로 반영
+
+  const tickMs = (debug && Number(process.env.AIPET_NOTIFY_TICK_MS)) || 30_000;
+  const tickTimer = setInterval(() => notifier.tick(), tickMs);
+
+  app.on('before-quit', () => {
+    host.dispose();
+    watcher.stop();
+    clearInterval(tickTimer);
+  });
 
   // --- 시작 ---
 
@@ -343,6 +459,21 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug, s
   engine.start(startDisplay.id, wa.x + wa.width / 2);
   syncDisplays();
   void host.refresh(); // 사용 가능한 AI 백엔드 탐지
+
+  // 디버그용: AIPET_FAKE_WINDOW="x,y,w,h"(물리 픽셀)를 주면 실제 창 대신 그런 활성 창이 있는 것처럼 동작한다.
+  // 사용자의 실제 창이나 포커스를 건드리지 않고 올라가기 흐름을 검증할 수 있다.
+  const fake = debug ? process.env.AIPET_FAKE_WINDOW?.split(',').map(Number) : null;
+  if (fake && fake.length === 4 && fake.every(Number.isFinite)) {
+    foreground = { hwnd: 'fake', pid: 0, proc: 'fake', cls: 'fake', x: fake[0], y: fake[1], w: fake[2], h: fake[3], min: 0, max: 0, fs: 0, busy: 0 };
+    applyForeground();
+  } else {
+    watcher.start();
+  }
+
+  // 디버그용: AIPET_TEST_NOTICE="문구"를 주면 3초 뒤 알림 말풍선을 띄운다.
+  if (debug && process.env.AIPET_TEST_NOTICE) {
+    setTimeout(() => showNotice({ text: /** @type {string} */ (process.env.AIPET_TEST_NOTICE), kind: 'reminder' }), 3000);
+  }
 
   // 디버그용: AIPET_AUTOTEST_MSG를 주면 시작 후 대화창을 열고 그 메시지를 보낸다.
   if (debug && process.env.AIPET_AUTOTEST_MSG) {

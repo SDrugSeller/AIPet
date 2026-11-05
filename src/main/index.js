@@ -58,6 +58,8 @@ if (!app.requestSingleInstanceLock()) {
         isVisible: manager.isVisible,
         setVisible: manager.setVisible,
         openSettings: () => settings.open(),
+        isDnd: () => store.get().general.doNotDisturb,
+        setDnd: (v) => store.update({ general: { doNotDisturb: v } }),
         listPersonas: () => personas.list().map((p) => ({ ...p, selected: p.id === store.get().persona.selected })),
         selectPersona: (id) => store.update({ persona: { selected: id } }),
       });

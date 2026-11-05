@@ -7,8 +7,10 @@ export const FALL_GRAVITY = 3000;
 
 /**
  * @typedef {{ kind: 'walk', x1: number, speed: number }
- *   | { kind: 'fall', y1: number, g: number }} Move
- * walk: pet.x에서 x1까지 speed(DIP/s)로 등속 이동 / fall: pet.y에서 y1까지 가속 낙하
+ *   | { kind: 'fall', y1: number, g: number }
+ *   | { kind: 'jump', x1: number, y1: number, dur: number, height: number }} Move
+ * walk: pet.x에서 x1까지 speed(DIP/s)로 등속 이동 / fall: pet.y에서 y1까지 가속 낙하 /
+ * jump: (pet.x, pet.y)에서 (x1, y1)까지 dur(ms) 동안 포물선으로 뛰어오른다 (height만큼 위로 솟는다)
  */
 
 /**
@@ -28,6 +30,13 @@ export function positionAt(pet, now) {
     const dist = Math.min(Math.abs(m.x1 - pet.x), m.speed * t);
     return { x: pet.x + Math.sign(m.x1 - pet.x) * dist, y: pet.y };
   }
+  if (m.kind === 'jump') {
+    const k = Math.min(1, (Math.max(0, now - pet.t0)) / m.dur);
+    return {
+      x: pet.x + (m.x1 - pet.x) * k,
+      y: pet.y + (m.y1 - pet.y) * k - 4 * m.height * k * (1 - k),
+    };
+  }
   return { x: pet.x, y: Math.min(m.y1, pet.y + 0.5 * m.g * t * t) };
 }
 
@@ -36,5 +45,6 @@ export function moveDuration(pet) {
   const m = pet.move;
   if (!m) return 0;
   if (m.kind === 'walk') return (Math.abs(m.x1 - pet.x) / m.speed) * 1000;
+  if (m.kind === 'jump') return m.dur;
   return Math.sqrt((2 * Math.max(0, m.y1 - pet.y)) / m.g) * 1000;
 }

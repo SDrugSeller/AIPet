@@ -42,7 +42,7 @@ await Promise.all(
 );
 
 /** skin.json에 폴백이 없을 때의 기본 대체 상태 */
-const DEFAULT_FALLBACKS = /** @type {Record<string, string>} */ ({ fall: 'drag' });
+const DEFAULT_FALLBACKS = /** @type {Record<string, string>} */ ({ fall: 'drag', jump: 'drag', sit: 'idle' });
 
 /** 상태 이름 → 실제로 그릴 수 있는 애니메이션 이름. 최종 폴백은 idle, 그것도 없으면 null. @param {string} name */
 function resolveAnim(name) {

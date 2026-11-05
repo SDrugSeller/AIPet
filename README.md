@@ -26,8 +26,18 @@ npm run lint
   - 읽기 전용 도구(Read/Glob/Grep 등)는 자동 허용(설정에서 끌 수 있음). 파일 쓰기, 명령 실행, 네트워크는 **말풍선의 승인 카드**에서 허용/거부합니다.
   - 승인 요청이 오면 펫이 놀란 표정을 짓고 알림음이 납니다. 다른 앱을 쓰는 중이어도 포커스를 가져가지 않습니다.
 - 환경변수(설정에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `AIPET_BACKEND`(`claude-code`|`openai-compat`)
-- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`
+- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
+
+## 행동과 먼저 말 걸기
+
+- **창 위에 올라가기**(Windows): 활성 창이 올라갈 만하면 펫이 창 아래까지 걸어가 뛰어올라 윗변에 서고, 창을 끌면 같이 움직이며, 다른 창으로 전환하거나 창을 닫으면 내려옵니다. 최대화/최소화/전체화면 창, 머리가 화면 위로 나가는 높이의 창, 몸이 들어가지 않는 좁은 창은 제외합니다. 지금은 **걸터앉은 전용 그림이 없어서** 서 있는 자세로 올라섭니다.
+- **개인정보**: 활성 창의 **위치/크기/프로세스 이름**만 읽습니다. 창 제목과 내용은 읽지 않고, 값은 이 PC 밖으로 나가지 않습니다. (읽는 방법: 앱이 띄우는 상주 PowerShell이 Win32 API를 0.1초마다 확인) 설정에서 끌 수 있습니다.
+- **전체화면 앱(영상·게임·발표)**이 활성이면 펫을 숨기고 먼저 말을 걸지 않습니다.
+- **먼저 말 걸기**는 기본적으로 조용합니다. 방해 금지(트레이/우클릭 메뉴 또는 설정), 전체화면, 대화 중, 숨김 상태에서는 말하지 않고, 쿨다운(기본 30분)을 지킵니다.
+  - 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알림 (기본 켜짐)
+  - 오래 쉬지 않고 컴퓨터를 쓰면 쉬라는 말 (기본 꺼짐, 입력이 5분 이상 없으면 쉰 것으로 봄)
+  - 정해진 시각 알림 (설정에서 추가). 조용해야 해서 못 전하면 30분 안에 전합니다.
 
 ## 말투
 

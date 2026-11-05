@@ -154,6 +154,39 @@ select {
   border-radius: 8px;
 }
 
+input[type='number'] {
+  display: block;
+  width: 120px;
+  margin-top: 4px;
+  padding: 6px 9px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+input[type='time'] {
+  padding: 5px 8px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.reminder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.reminder input[type='text'] {
+  flex: 1;
+  margin-top: 0;
+}
+
 textarea {
   display: block;
   width: 100%;

@@ -25,6 +25,15 @@
       </form>
     </section>
 
+    <!-- 알림 말풍선: 펫이 먼저 말을 걸 때(쉬라는 안내, 정해진 시각 알림, 작업 완료) 잠깐 뜬다 -->
+    <section id="notice" hidden role="status" aria-live="polite">
+      <p id="noticeText"></p>
+      <div class="actions">
+        <button type="button" id="noticeOpen">대화하기</button>
+        <button type="button" id="noticeClose">닫기</button>
+      </div>
+    </section>
+
     <script type="module" src="main.js"></script>
   </body>
 </html>

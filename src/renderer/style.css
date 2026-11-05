@@ -152,6 +152,69 @@ body {
   }
 }
 
+/* --- 알림 말풍선 --- */
+
+#notice {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 260px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  color: var(--bubble-fg);
+  background: var(--bubble-bg);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
+  --tail: 130px;
+}
+
+#notice[hidden] {
+  display: none;
+}
+
+#notice::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--tail) - 7px);
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  background: var(--bubble-bg);
+  border-right: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+
+#notice p {
+  margin: 0 0 8px;
+  cursor: pointer;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+#notice .actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+#notice button {
+  padding: 3px 12px;
+  font: inherit;
+  color: var(--bubble-fg);
+  background: var(--input-bg);
+  border: 1px solid var(--bubble-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#notice button#noticeOpen {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 /* 도구 사용 승인 카드 */
 .perm {
   align-self: stretch;

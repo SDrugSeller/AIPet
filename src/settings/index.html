@@ -103,6 +103,39 @@
       </section>
 
       <section>
+        <h2>행동</h2>
+        <label class="row">
+          <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
+          <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
+        </label>
+        <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
+      </section>
+
+      <section>
+        <h2>먼저 말 걸기</h2>
+        <p class="hint">
+          펫이 부르지 않았는데 말을 거는 기능이에요. 방해 금지일 때, 전체화면 앱이나 발표 중일 때,
+          대화 중일 때는 말하지 않아요.
+        </p>
+        <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
+        <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
+        <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
+        <label class="field">쉬지 않고 쓴 시간이 이만큼(분) 넘으면
+          <input type="number" min="5" max="600" data-path="spontaneous.breakAfterMin" />
+        </label>
+        <label class="field">쉬라고 할 때 하는 말
+          <input type="text" data-path="spontaneous.breakMessage" maxlength="200" />
+        </label>
+        <label class="field">먼저 말을 거는 최소 간격(분)
+          <input type="number" min="1" max="600" data-path="spontaneous.cooldownMin" />
+        </label>
+        <div class="field">정해진 시각 알림
+          <div id="reminders"></div>
+          <button type="button" id="addReminder">알림 추가</button>
+        </div>
+      </section>
+
+      <section>
         <h2>일반</h2>
         <label class="field">펫 스킨 <span class="muted">(바꾸면 앱이 다시 시작돼요)</span>
           <select id="skin"></select>
