@@ -174,3 +174,11 @@ test('먼저 말 걸기 전체 스위치는 기본 켜짐이고, 저장되며 �
   s.update({ spontaneous: { enabled: 'no' } });
   assert.equal(s.get().spontaneous.enabled, false);
 });
+
+test('BOM이 붙은 설정 파일(메모장으로 저장)도 읽는다', () => {
+  const { file } = tmpFile();
+  fs.writeFileSync(file, '\uFEFF' + JSON.stringify({ general: { skin: 'genba-cat' } }), 'utf8');
+  const s = createStore({ file, safeStorage: fakeSafe() });
+  assert.equal(s.get().general.skin, 'genba-cat');
+  assert.equal(fs.existsSync(`${file}.broken`), false); // 깨진 파일로 취급하지 않는다
+});
