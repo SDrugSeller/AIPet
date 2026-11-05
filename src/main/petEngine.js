@@ -67,11 +67,37 @@ export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
     return a ? (a.frames / a.fps) * 1000 : 400;
   }
 
+  // 에이전트 연동 상태(think/work/talk/done/error)는 일반 행동보다 우선한다 (DESIGN.md 5.3).
+  /** @type {string | null} */
+  let agentAnim = null;
+  let agentOnce = false;
+  /** 대화창이 열려 있는 동안은 돌아다니지 않고 제자리에 있는다. */
+  let hold = false;
+
+  /** 낙하/착지 중에는 애니메이션을 바꾸지 않는다 (끝나면 enterIdle이 반영한다). */
+  const busyMoving = () => pet.dragging || pet.anim === 'fall' || pet.anim === 'drop';
+
   function enterIdle() {
     settle();
+    if (agentAnim) {
+      const name = agentAnim;
+      setAnim(name);
+      emit();
+      if (agentOnce) {
+        after(animDuration(name), () => {
+          agentAnim = null;
+          agentOnce = false;
+          enterIdle();
+        });
+      } else {
+        clearTimer();
+      }
+      return;
+    }
     setAnim('idle');
     emit();
-    after(rand(3000, 8000), decide);
+    if (hold) clearTimer();
+    else after(rand(3000, 8000), decide);
   }
 
   /** idle이 끝났을 때 다음 행동을 고른다. */
@@ -124,6 +150,30 @@ export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
       pet.y = area(display)?.ground ?? 0;
       lastActive = Date.now();
       enterIdle();
+    },
+
+    /** 사용자가 펫을 건드렸다 (클릭, 대화 등). 자고 있으면 깨운다. */
+    poke() {
+      lastActive = Date.now();
+      if (pet.anim === 'sleep') enterIdle();
+    },
+
+    /** 대화창이 열려 있는 동안 제자리에 머문다. */
+    setHold(/** @type {boolean} */ value) {
+      if (hold === value) return;
+      hold = value;
+      if (!busyMoving()) enterIdle();
+    },
+
+    /**
+     * 에이전트 상태 애니메이션을 재생한다. null이면 일반 행동으로 복귀.
+     * once=true면 한 번 재생한 뒤 자동으로 복귀한다 (done, error).
+     */
+    setAgentAnim(/** @type {string | null} */ name, /** @type {{ once?: boolean }} */ { once = false } = {}) {
+      if (name === agentAnim && once === agentOnce) return;
+      agentAnim = name;
+      agentOnce = name !== null && once;
+      if (!busyMoving()) enterIdle();
     },
 
     startDrag() {

@@ -186,10 +186,13 @@ AIPet/
  ├─ package.json
  ├─ docs/DESIGN.md
  ├─ src/
- │   ├─ main/        (index.js, windows.js, ipc.js, store.js, tray.js)
- │   ├─ main/agent/  (adapter.js, cliAdapter.js, apiAdapter.js, openaiCompat.js, permissions.js)
- │   ├─ preload/     (preload.js)
- │   └─ renderer/    (index.html, pet/, ui/, main.js)
+ │   ├─ main/        (index.js, windows.js, petEngine.js, skin.js, [store.js, tray.js: M4])
+ │   ├─ main/agent/  (adapter.js, agentHost.js, claudeCodeAdapter.js, openaiCompatAdapter.js, [apiAdapter.js, permissions.js: M4~M6])
+ │   ├─ shared/      (motion.js: main/renderer 공용 이동 공식)
+ │   ├─ preload/     (preload.cjs)
+ │   └─ renderer/    (index.html, main.js, chat.js, style.css)
+ ├─ tests/         (node --test)
+ ├─ tools/         (gen-placeholder-skin.mjs)
  ├─ skins/         (skin.schema.json, default/skin.json + 상태별 *.png)
  └─ eslint.config.js, jsconfig.json (checkJs)
 ```

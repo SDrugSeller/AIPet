@@ -11,6 +11,20 @@
   </head>
   <body>
     <canvas id="stage"></canvas>
+
+    <!-- 말풍선: 펫이 있는 모니터의 창에서만 보인다 -->
+    <section id="bubble" hidden aria-label="펫과 대화">
+      <header id="meta">
+        <span id="backend"></span>
+        <button id="close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
+      </header>
+      <div id="log" role="log" aria-live="polite"></div>
+      <form id="composer" autocomplete="off">
+        <textarea id="input" rows="1" maxlength="8000" placeholder="무엇을 도와줄까요?" spellcheck="false"></textarea>
+        <button id="send" type="submit" title="보내기 (Enter)" aria-label="보내기">↑</button>
+      </form>
+    </section>
+
     <script type="module" src="main.js"></script>
   </body>
 </html>

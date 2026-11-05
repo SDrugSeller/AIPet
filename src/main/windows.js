@@ -1,6 +1,9 @@
 // @ts-check
 import { BrowserWindow, Menu, app, ipcMain, screen } from 'electron';
 import { createPetEngine } from './petEngine.js';
+import { createAgentHost } from './agent/agentHost.js';
+import { createClaudeCodeAdapter } from './agent/claudeCodeAdapter.js';
+import { createOpenAICompatAdapter } from './agent/openaiCompatAdapter.js';
 
 /**
  * 모니터마다 투명 오버레이 창을 하나씩 만든다.
@@ -8,9 +11,9 @@ import { createPetEngine } from './petEngine.js';
  * (배율이 다른 모니터 사이의 DIP 좌표는 경계에서 끊어지므로 경계에 걸쳐 그리지 않는다).
  * 펫의 행동/위치는 petEngine이 관리하고, 여기서는 창과 IPC, 드래그 입력을 맡는다.
  *
- * @param {{ skin: any, preloadPath: string, rendererPath: string, debug: boolean }} opts
+ * @param {{ skin: any, preloadPath: string, rendererPath: string, workDir: string, debug: boolean }} opts
  */
-export function createOverlayManager({ skin, preloadPath, rendererPath, debug }) {
+export function createOverlayManager({ skin, preloadPath, rendererPath, workDir, debug }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
   const headroom = skin.anchor.y * skin.scale;
@@ -25,6 +28,46 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     sleepAfterMs: (debug && sleepSec > 0 ? sleepSec : 60) * 1000,
   });
   const pet = engine.pet;
+
+  // 에이전트 백엔드 (M3: Claude Code CLI + OpenAI 호환). 설정 저장은 M4에서 추가한다.
+  const env = process.env;
+  const host = createAgentHost({
+    adapters: [
+      createClaudeCodeAdapter({ workDir }),
+      createOpenAICompatAdapter({
+        baseUrl: env.AIPET_OPENAI_BASE_URL || 'http://127.0.0.1:11434/v1',
+        model: env.AIPET_OPENAI_MODEL || undefined,
+        apiKey: env.AIPET_OPENAI_KEY || undefined,
+      }),
+    ],
+    engine,
+    broadcast: sendAll,
+    onOpenChange: syncChatFocus,
+    preferred: env.AIPET_BACKEND || undefined,
+  });
+
+  /** @param {string} channel @param {any} payload */
+  function sendAll(channel, payload) {
+    for (const win of windows.values()) {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload);
+    }
+  }
+
+  /** 대화창이 열려 있는 동안만, 펫이 있는 모니터의 창이 키보드 포커스를 받는다. */
+  let focusDisplay = 0;
+  function syncChatFocus() {
+    const open = host.isOpen;
+    for (const [id, win] of windows) {
+      if (win.isDestroyed()) continue;
+      const want = open && id === pet.display;
+      win.setFocusable(want);
+      if (want) {
+        win.focus();
+        focusDisplay = id;
+      }
+    }
+    if (!open) focusDisplay = 0;
+  }
 
   /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 */
   /** @param {number} displayId */
@@ -79,9 +122,9 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     if (debug && !pet.dragging) {
       console.log('[pet]', pet.anim, pet.facing, `display=${pet.display}`, `x=${Math.round(pet.x)}`, `y=${Math.round(pet.y)}`, pet.move ? JSON.stringify(pet.move) : '');
     }
-    for (const win of windows.values()) {
-      if (!win.isDestroyed()) win.webContents.send('pet:state', { ...pet });
-    }
+    sendAll('pet:state', { ...pet });
+    // 대화창이 열린 채 펫이 다른 모니터로 가면 포커스도 따라간다.
+    if (host.isOpen && focusDisplay !== pet.display) syncChatFocus();
   }
 
   /** @param {Electron.Display} display */
@@ -126,7 +169,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
             const img = await win.webContents.capturePage();
             const { writeFile } = await import('node:fs/promises');
             await writeFile(`${process.env.AIPET_CAPTURE_DIR}/window-${display.id}.png`, img.toPNG());
-          }, 3000),
+          }, Number(process.env.AIPET_CAPTURE_DELAY_MS) || 3000),
         );
       }
     }
@@ -165,7 +208,27 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     const id = findDisplayId(e.sender);
     const bounds = id === null ? null : boundsOf(id);
     if (!bounds) throw new Error('알 수 없는 창');
-    return { displayId: id, bounds, skin, pet: { ...pet }, debug };
+    return { displayId: id, bounds, skin, pet: { ...pet }, chat: host.snapshot(), debug };
+  });
+
+  // --- 대화 (렌더러의 사용자 입력은 모두 여기서 검증 후 호스트로 전달) ---
+
+  /** @param {Electron.IpcMainEvent} e */
+  const fromOverlay = (e) => findDisplayId(e.sender) !== null;
+
+  ipcMain.on('pet:click', (e) => {
+    if (!fromOverlay(e)) return;
+    engine.poke();
+    host.setOpen(!host.isOpen);
+  });
+  ipcMain.on('chat:close', (e) => {
+    if (fromOverlay(e)) host.setOpen(false);
+  });
+  ipcMain.on('chat:send', (e, text) => {
+    if (fromOverlay(e) && typeof text === 'string') void host.send(text);
+  });
+  ipcMain.on('chat:abort', (e) => {
+    if (fromOverlay(e)) host.abort();
   });
 
   ipcMain.on('overlay:set-interactive', (e, interactive) => {
@@ -219,8 +282,22 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     const id = findDisplayId(e.sender);
     if (id === null) return;
     const win = windows.get(id);
-    Menu.buildFromTemplate([{ label: '종료', click: () => app.quit() }]).popup({ window: win });
+    void host.refresh(); // 다음에 메뉴를 열 때를 위해 최신 상태로 갱신
+    Menu.buildFromTemplate([
+      { label: 'AI 연결', enabled: false },
+      ...host.backends().map((b) => ({
+        label: `${b.label}${b.available ? '' : '  (사용 불가)'}`,
+        type: /** @type {const} */ ('radio'),
+        checked: b.selected,
+        click: () => host.select(b.id),
+      })),
+      { label: '연결 다시 확인', click: () => void host.refresh() },
+      { type: 'separator' },
+      { label: '종료', click: () => app.quit() },
+    ]).popup({ window: win });
   });
+
+  app.on('before-quit', () => host.dispose());
 
   // --- 시작 ---
 
@@ -238,4 +315,13 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
 
   engine.start(startDisplay.id, wa.x + wa.width / 2);
   syncDisplays();
+  void host.refresh(); // 사용 가능한 AI 백엔드 탐지
+
+  // 디버그용: AIPET_AUTOTEST_MSG를 주면 시작 후 대화창을 열고 그 메시지를 보낸다.
+  if (debug && process.env.AIPET_AUTOTEST_MSG) {
+    setTimeout(() => {
+      host.setOpen(true);
+      void host.send(/** @type {string} */ (process.env.AIPET_AUTOTEST_MSG));
+    }, 2500);
+  }
 }

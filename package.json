@@ -7,7 +7,8 @@
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

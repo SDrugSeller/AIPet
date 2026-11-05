@@ -1,3 +1,30 @@
+:root {
+  --bubble-bg: rgba(255, 255, 255, 0.97);
+  --bubble-fg: #222;
+  --bubble-muted: #7a7a7a;
+  --bubble-border: rgba(0, 0, 0, 0.12);
+  --user-bg: #ffb585;
+  --user-fg: #3a2414;
+  --reply-bg: #f1f1f1;
+  --input-bg: #f6f6f6;
+  --error: #d6322b;
+  --accent: #ff9f6b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bubble-bg: rgba(38, 38, 42, 0.97);
+    --bubble-fg: #ececec;
+    --bubble-muted: #9a9aa0;
+    --bubble-border: rgba(255, 255, 255, 0.14);
+    --user-bg: #c9743f;
+    --user-fg: #fff;
+    --reply-bg: #323238;
+    --input-bg: #2d2d32;
+    --error: #ff7a73;
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -6,6 +33,7 @@ body {
   overflow: hidden;
   background: transparent;
   user-select: none;
+  font: 13px/1.5 'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
 }
 
 #stage {
@@ -13,4 +41,159 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* --- 말풍선 --- */
+
+#bubble {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 8px 10px 10px;
+  color: var(--bubble-fg);
+  background: var(--bubble-bg);
+  border: 1px solid var(--bubble-border);
+  border-radius: 14px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
+  --tail: 150px;
+}
+
+#bubble[hidden] {
+  display: none;
+}
+
+/* 펫을 가리키는 꼬리 */
+#bubble::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--tail) - 7px);
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  background: var(--bubble-bg);
+  border-right: 1px solid var(--bubble-border);
+  border-bottom: 1px solid var(--bubble-border);
+  transform: rotate(45deg);
+}
+
+#meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--bubble-muted);
+  font-size: 11px;
+}
+
+#close {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+#close:hover {
+  color: var(--bubble-fg);
+}
+
+#log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  user-select: text;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+#log:empty {
+  display: none;
+}
+
+.msg {
+  max-width: 88%;
+  padding: 5px 9px;
+  border-radius: 10px;
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: var(--user-bg);
+  color: var(--user-fg);
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  background: var(--reply-bg);
+}
+
+.msg.error {
+  align-self: stretch;
+  max-width: none;
+  background: none;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.msg.typing {
+  color: var(--bubble-muted);
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+#composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+#log:empty + #composer {
+  margin-top: 0;
+}
+
+#input {
+  flex: 1;
+  box-sizing: border-box;
+  resize: none;
+  max-height: 96px;
+  padding: 6px 9px;
+  font: inherit;
+  color: inherit;
+  background: var(--input-bg);
+  border: 1px solid var(--bubble-border);
+  border-radius: 10px;
+  outline: none;
+  user-select: text;
+}
+
+#input:focus {
+  border-color: var(--accent);
+}
+
+#send {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+#send:hover {
+  filter: brightness(1.08);
 }

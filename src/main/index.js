@@ -25,6 +25,8 @@ if (!app.requestSingleInstanceLock()) {
       skin,
       preloadPath: path.join(here, '../preload/preload.cjs'),
       rendererPath: path.join(here, '../renderer/index.html'),
+      // 펫 전용 작업 폴더 (CLI 대화 기록이 사용자의 프로젝트와 섞이지 않게)
+      workDir: path.join(app.getPath('userData'), 'agent-workspace'),
       debug: process.env.AIPET_DEBUG === '1',
     });
   });
