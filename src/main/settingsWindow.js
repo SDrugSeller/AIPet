@@ -1,5 +1,8 @@
 // @ts-check
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import path from 'node:path';
+import { KIND_IDS, MAX_CONNECTIONS, keySecretName, newConnection } from '../shared/connections.js';
+import { findClaudeBinary } from './agent/claudeCodeAdapter.js';
 import { DEFAULT_OPENAI_BASE_URL } from './config.js';
 import { inspectSkin, listSkins } from './skin.js';
 
@@ -9,41 +12,38 @@ import { inspectSkin, listSkins } from './skin.js';
  *   store: ReturnType<typeof import('./store.js').createStore>,
  *   config: ReturnType<typeof import('./config.js').createConfig>,
  *   personas: ReturnType<typeof import('./personas.js').createPersonaStore>,
- *   host: ReturnType<typeof import('./agent/agentHost.js').createAgentHost>,
+ *   manager: ReturnType<typeof import('./windows.js').createOverlayManager>,
+ *   userDataDir: string,
  *   preloadPath: string,
  *   htmlPath: string,
  *   packaged: boolean,
  * }} opts
  */
-export function createSettingsWindow({ store, config, personas, host, preloadPath, htmlPath, packaged }) {
+export function createSettingsWindow({ store, config, personas, manager, userDataDir, preloadPath, htmlPath, packaged }) {
   /** @type {BrowserWindow | null} */
   let win = null;
+  /** 열 때 먼저 보여 줄 탭 */
+  let initialTab = '';
 
-  /** 설치된 스킨 목록 (설정 창을 열 때 한 번 읽는다) */
+  /** 설치된 스킨 목록 (설정 창을 열 때 읽는다) */
   /** @type {{ id: string, name: string, author: string }[]} */
   let skins = [];
 
-  /** 말투 목록과 선택한 말투의 내용 (파일이 바뀌었을 수 있으니 매번 읽는다) */
-  function personaState() {
-    const items = personas.list();
-    const selectedId = items.find((p) => p.id === store.get().persona.selected)?.id ?? items[0]?.id ?? '';
-    return { dir: personas.dir, items, selectedId, text: selectedId ? (personas.read(selectedId) ?? '') : '' };
-  }
-
-  /** 지금 선택된 스킨의 원본 값과 시트 크기 (설정 창을 열 때 읽는다) */
-  /** @type {Awaited<ReturnType<typeof inspectSkin>>} */
-  let skinInfo = null;
-
   function state() {
+    const s = store.get();
     return {
-      skinTuning: skinInfo ? { ...skinInfo, current: store.get().skinTuning[skinInfo.id] ?? null } : null,
-      persona: personaState(),
+      settings: s,
+      statuses: manager.statuses(),
+      /** 연결별로 저장된 API 키가 있는가 (키 값 자체는 렌더러로 보내지 않는다) */
+      hasKey: Object.fromEntries(s.connections.map((c) => [c.id, store.hasSecret(keySecretName(c.id))])),
+      personas: { dir: personas.dir, items: personas.list() },
       skins,
-      settings: store.get(),
-      hasKey: { openaiKey: store.hasSecret('openaiKey') },
-      backends: host.backends(),
-      defaults: { workDir: config.defaultWorkDir, openaiBaseUrl: DEFAULT_OPENAI_BASE_URL },
-      keyFromEnv: !!process.env.AIPET_OPENAI_KEY,
+      defaults: {
+        workDir: config.defaultWorkDir,
+        accountDir: path.join(userDataDir, 'claude-accounts'),
+        openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
+      },
+      keyFromEnv: { openai: !!process.env.AIPET_OPENAI_KEY, anthropic: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) },
       packaged,
     };
   }
@@ -55,45 +55,93 @@ export function createSettingsWindow({ store, config, personas, host, preloadPat
   /** 이 창에서 온 요청만 받는다. @param {Electron.IpcMainInvokeEvent} e */
   const fromSettings = (e) => !!win && !win.isDestroyed() && e.sender === win.webContents;
 
-  ipcMain.handle('settings:get', (e) => (fromSettings(e) ? state() : null));
+  ipcMain.handle('settings:get', (e) => (fromSettings(e) ? { ...state(), initialTab } : null));
 
-  ipcMain.handle('settings:set', async (e, patch) => {
+  ipcMain.handle('settings:set', (e, patch) => {
     if (!fromSettings(e)) return null;
     store.update(patch);
-    // AI 연결 관련 설정이 바뀌면 새 설정으로 다시 점검한다.
-    if (patch && typeof patch === 'object' && 'adapters' in patch) await host.refresh();
     return state();
   });
 
-  ipcMain.handle('settings:secret', async (e, name, value) => {
-    if (!fromSettings(e) || typeof name !== 'string' || (value !== null && typeof value !== 'string')) return null;
-    const result = store.setSecret(name, value);
-    await host.refresh();
+  // --- 연결 추가/삭제/점검 ---
+
+  ipcMain.handle('settings:add', (e, kind) => {
+    if (!fromSettings(e) || typeof kind !== 'string' || !KIND_IDS.includes(/** @type {any} */ (kind))) return null;
+    const existing = store.get().connections;
+    if (existing.length >= MAX_CONNECTIONS) return { error: `연결은 최대 ${MAX_CONNECTIONS}개까지 만들 수 있어요`, state: state() };
+    const persona = personas.list()[0]?.id ?? '기본.txt';
+    store.update({ connections: [...existing, newConnection(/** @type {any} */ (kind), existing, { persona })] });
+    return { state: state() };
+  });
+
+  ipcMain.handle('settings:remove', (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    store.update({ connections: store.get().connections.filter((c) => c.id !== id) }); // 그 연결의 API 키도 함께 지워진다
+    return state();
+  });
+
+  ipcMain.handle('settings:recheck', async (e, id) => {
+    if (!fromSettings(e)) return null;
+    if (typeof id === 'string') await manager.refresh(id);
+    else await manager.refreshAll();
+    return state();
+  });
+
+  ipcMain.handle('settings:secret', async (e, id, value) => {
+    if (!fromSettings(e) || typeof id !== 'string' || (value !== null && typeof value !== 'string')) return null;
+    const result = store.setSecret(keySecretName(id), value);
+    await manager.refresh(id);
     return { result, state: state() };
+  });
+
+  /** Claude Code 계정을 따로 로그인하는 터미널 명령 (복사해서 붙여 넣는다). 사용자 입력은 따옴표를 이스케이프해서 넣는다. */
+  ipcMain.handle('settings:login-command', (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    const c = store.get().connections.find((x) => x.id === id);
+    if (!c || c.kind !== 'claude-code') return null;
+    const cfg = config.claude(id);
+    if (!cfg.configDir) return { ok: false, reason: '먼저 "계정 설정 폴더"를 정해 주세요' };
+    const q = (/** @type {string} */ s) => `'${s.replace(/'/g, "''")}'`;
+    const bin = findClaudeBinary(process.env, cfg.path) ?? 'claude';
+    return { ok: true, command: `$env:CLAUDE_CONFIG_DIR=${q(cfg.configDir)}; & ${q(bin)}` };
+  });
+
+  ipcMain.handle('settings:pick-dir', async (e) => {
+    if (!fromSettings(e) || !win) return null;
+    const r = await dialog.showOpenDialog(win, { title: '폴더 선택', properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : (r.filePaths[0] ?? null);
+  });
+
+  // --- 말투 파일 ---
+
+  ipcMain.handle('settings:persona-read', (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    return personas.read(id);
   });
 
   ipcMain.handle('settings:persona-save', (e, id, text) => {
     if (!fromSettings(e) || typeof id !== 'string' || typeof text !== 'string') return null;
     personas.write(id, text);
-    return state();
+    return true;
   });
 
   ipcMain.handle('settings:persona-create', (e, name, text) => {
     if (!fromSettings(e) || typeof name !== 'string' || typeof text !== 'string') return null;
-    const r = personas.create(name, text);
-    if (r.ok && r.id) store.update({ persona: { selected: r.id } });
-    return { result: r, state: state() };
+    const result = personas.create(name, text);
+    return { result, state: state() };
   });
 
   ipcMain.handle('settings:persona-delete', (e, id) => {
     if (!fromSettings(e) || typeof id !== 'string') return null;
-    if (personas.list().length <= 1) return { result: { ok: false, reason: '마지막 말투는 지울 수 없어요' }, state: state() };
-    const r = personas.remove(id);
-    if (r.ok && store.get().persona.selected === id) {
+    const items = personas.list();
+    if (items.length <= 1) return { result: { ok: false, reason: '마지막 말투는 지울 수 없어요' }, state: state() };
+    const result = personas.remove(id);
+    if (result.ok) {
+      // 이 말투를 쓰던 연결은 남은 첫 번째 말투로 옮긴다
       const first = personas.list()[0]?.id;
-      if (first) store.update({ persona: { selected: first } });
+      if (first) store.update({ connections: store.get().connections.map((c) => (c.persona === id ? { ...c, persona: first } : c)) });
     }
-    return { result: r, state: state() };
+    return { result, state: state() };
   });
 
   ipcMain.handle('settings:persona-open-folder', async (e) => {
@@ -102,36 +150,29 @@ export function createSettingsWindow({ store, config, personas, host, preloadPat
     return true;
   });
 
-  ipcMain.handle('settings:select', (e, id) => {
+  // --- 스킨 크기 ---
+
+  ipcMain.handle('settings:skin-info', async (e, id) => {
     if (!fromSettings(e) || typeof id !== 'string') return null;
-    host.select(id);
-    return state();
-  });
-
-  ipcMain.handle('settings:recheck', async (e) => {
-    if (!fromSettings(e)) return null;
-    await host.refresh();
-    return state();
-  });
-
-  ipcMain.handle('settings:pick-dir', async (e) => {
-    if (!fromSettings(e) || !win) return null;
-    const r = await dialog.showOpenDialog(win, { title: '작업 폴더 선택', properties: ['openDirectory', 'createDirectory'] });
-    return r.canceled ? null : (r.filePaths[0] ?? null);
+    const info = await inspectSkin(id);
+    return info ? { ...info, current: store.get().skinTuning[id] ?? null } : null;
   });
 
   return {
-    open() {
+    /** @param {string} [tab] 먼저 보여 줄 탭 */
+    open(tab) {
+      initialTab = tab ?? '';
       if (win && !win.isDestroyed()) {
         if (win.isMinimized()) win.restore();
         win.show();
         win.focus();
+        if (tab) win.webContents.send('settings:tab', tab);
         return;
       }
       win = new BrowserWindow({
-        width: 580,
-        height: 760,
-        minWidth: 460,
+        width: 640,
+        height: 780,
+        minWidth: 480,
         minHeight: 480,
         title: 'AIPet 설정',
         autoHideMenuBar: true,
@@ -153,14 +194,11 @@ export function createSettingsWindow({ store, config, personas, host, preloadPat
         skins = list;
         pushState();
       });
-      void inspectSkin(store.get().general.skin).then((info) => {
-        skinInfo = info;
-        pushState();
-      });
-      void host.refresh().then(pushState); // 열 때마다 최신 상태로
+      void manager.refreshAll(); // 열 때마다 최신 상태로 (끝나면 onStatus로 화면이 갱신된다)
     },
     pushState,
     /** 디버그/검증용 */
     getWindow: () => win,
   };
 }
+

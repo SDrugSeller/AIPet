@@ -1,6 +1,7 @@
 // @ts-check
 // 설정 창. 값이 바뀔 때마다 자동 저장한다. 화면에 표시되는 문자열은 모두 textContent/value로만 넣는다.
 
+import { KIND_IDS, KINDS, MAX_CONNECTIONS } from '../shared/connections.js';
 import { applyTuning, checkSheets, detectFrameSize } from '../shared/skinTuning.js';
 
 /** @type {any} */
@@ -17,7 +18,7 @@ let savedTimer;
 function flashSaved(/** @type {string} */ text = '저장됨') {
   savedEl.textContent = text;
   clearTimeout(savedTimer);
-  savedTimer = setTimeout(() => (savedEl.textContent = ''), 1800);
+  savedTimer = setTimeout(() => (savedEl.textContent = ''), 2400);
 }
 
 /** "a.b-c.d" 경로의 값을 읽는다 @param {any} obj @param {string} path */
@@ -46,87 +47,433 @@ async function save(patch) {
   }
 }
 
-// --- 화면 그리기 (입력 중인 칸은 건드리지 않는다) ---
-
-function render() {
-  const s = state.settings;
-
-  for (const el of document.querySelectorAll('[data-path]')) {
-    const input = /** @type {HTMLInputElement} */ (el);
-    const value = getPath(s, input.dataset.path ?? '');
-    if (input.type === 'checkbox') input.checked = !!value;
-    else if (document.activeElement !== input) input.value = value ?? '';
-  }
-
-  // 스킨 목록 (사용자가 열어 둔 드롭다운을 닫지 않도록 내용이 바뀔 때만 다시 만든다)
-  const skinSel = /** @type {HTMLSelectElement} */ ($('#skin'));
-  const ids = state.skins.map((/** @type {any} */ k) => k.id).join('|');
-  if (skinSel.dataset.ids !== ids) {
-    skinSel.dataset.ids = ids;
-    skinSel.replaceChildren(
-      ...state.skins.map((/** @type {any} */ k) => {
-        const o = document.createElement('option');
-        o.value = k.id;
-        o.textContent = k.name === k.id ? k.id : `${k.name} (${k.id})`;
-        return o;
-      }),
-    );
-  }
-  skinSel.value = s.general.skin;
-
-  // 말투 (입력 중인 칸은 건드리지 않는다)
-  const pr = state.persona;
-  const personaSel = /** @type {HTMLSelectElement} */ ($('#persona'));
-  const pids = pr.items.map((/** @type {any} */ p) => p.id).join('|');
-  if (personaSel.dataset.ids !== pids) {
-    personaSel.dataset.ids = pids;
-    personaSel.replaceChildren(
-      ...pr.items.map((/** @type {any} */ p) => {
-        const o = document.createElement('option');
-        o.value = p.id;
-        o.textContent = p.name;
-        return o;
-      }),
-    );
-  }
-  personaSel.value = pr.selectedId;
-  const personaText = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
-  personaText.dataset.id = pr.selectedId; // 자동 저장할 때 어느 파일인지 (선택이 바뀌는 순간의 어긋남 방지)
-  if (document.activeElement !== personaText) personaText.value = pr.text;
-  /** @type {HTMLButtonElement} */ ($('#personaDelete')).disabled = pr.items.length <= 1;
-  $('#personaDir').textContent = `저장 위치: ${pr.dir}`;
-
-  renderReminders();
-  renderTuning();
-
-  // 먼저 말 걸기를 끄면 하위 항목을 회색으로 비활성화한다
-  const spOn = !!s.spontaneous.enabled;
-  const spBox = $('#spontaneousOptions');
-  spBox.style.opacity = spOn ? '1' : '0.5';
-  for (const el of spBox.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (el).disabled = !spOn;
-
-  /** @type {HTMLInputElement} */ ($('#openaiBaseUrl')).placeholder = state.defaults.openaiBaseUrl;
-  /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
-  $('#keyStatus').textContent = state.hasKey.openaiKey
-    ? '저장된 키가 있어요'
-    : state.keyFromEnv
-      ? '환경변수(AIPET_OPENAI_KEY)의 키를 쓰는 중이에요'
-      : '저장된 키 없음';
-  $('#loginNote').textContent = state.packaged ? '' : '(설치본에서만 적용돼요)';
-
-  for (const b of state.backends) {
-    const card = $(`[data-backend="${b.id}"]`);
-    const status = $('[data-role="status"]', card);
-    const checking = b.enabled && !b.checked;
-    status.textContent = !b.enabled ? '사용 안 함' : checking ? '확인 중…' : b.available ? '사용 가능' : '사용 불가';
-    status.className = `badge ${checking ? '' : b.enabled && b.available ? 'ok' : 'bad'}`;
-    $('[data-role="info"]', card).textContent = b.available ? b.info : '';
-    $('[data-role="reason"]', card).textContent = b.enabled && b.checked && !b.available ? b.reason : '';
-    /** @type {HTMLInputElement} */ ($(`input[name="backend"][value="${b.id}"]`)).checked = b.selected;
-  }
+/** 새 상태를 받아 화면을 갱신한다 @param {any} next */
+function apply(next) {
+  if (!next) return;
+  state = next;
+  render();
 }
 
-// --- 스킨 크기 ---
+/** 이름 목록에서 쓸 옵션 요소 @param {string} value @param {string} text */
+function option(value, text) {
+  const o = document.createElement('option');
+  o.value = value;
+  o.textContent = text;
+  return o;
+}
+
+// ---------------------------------------------------------------- 연결(캐릭터) 카드
+
+/** 종류별 입력칸. type: bool 체크박스 / text 글 / dir 글+폴더 선택 / key API 키 */
+const FIELDS = /** @type {Record<string, { key: string, type: 'bool' | 'text' | 'dir' | 'key', label: string, hint?: string, placeholder?: string }[]>} */ ({
+  'claude-code': [
+    { key: 'tools', type: 'bool', label: '파일·명령 도구 사용', hint: '(위험한 동작은 매번 허용 여부를 물어요)' },
+    { key: 'path', type: 'text', label: 'claude 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
+    { key: 'configDir', type: 'dir', label: '계정 설정 폴더', hint: '(여러 계정을 쓰려면 캐릭터마다 다른 폴더를 정해요. 비우면 기본 로그인 계정)' },
+  ],
+  'codex-cli': [
+    { key: 'path', type: 'text', label: 'codex 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Codex 기본값)', placeholder: '예: gpt-5-codex' },
+  ],
+  'gemini-cli': [
+    { key: 'path', type: 'text', label: 'gemini 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Gemini 기본값)', placeholder: '예: gemini-2.5-pro' },
+  ],
+  'anthropic-api': [
+    { key: 'model', type: 'text', label: '모델', hint: '(더 저렴한 모델: claude-sonnet-5-5, claude-haiku-5-5)', placeholder: 'claude-opus-5-5' },
+    { key: 'key', type: 'key', label: 'API 키', hint: '(OS 보안 저장소에 암호화해 저장돼요)' },
+    { key: 'baseUrl', type: 'text', label: 'API 주소', hint: '(프록시를 쓸 때만. 비우면 기본값)', placeholder: 'https://api.anthropic.com' },
+  ],
+  'openai-compat': [
+    { key: 'baseUrl', type: 'text', label: '서버 주소', placeholder: 'http://127.0.0.1:11434/v1' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 서버의 첫 모델)', placeholder: '예: llama3.2' },
+    { key: 'key', type: 'key', label: 'API 키', hint: '(선택, OS 보안 저장소에 암호화해 저장돼요)' },
+  ],
+});
+
+/** 종류별 안내 한 줄 */
+const KIND_NOTE = /** @type {Record<string, string>} */ ({
+  'claude-code': '파일 읽기/쓰기와 명령 실행까지 할 수 있어요 (쓰기·실행은 말풍선에서 허용해야 해요).',
+  'codex-cli': '읽기 전용으로 실행돼요 (파일을 바꾸지 않아요). 터미널에서 codex login으로 로그인해 두세요.',
+  'gemini-cli': '읽기 전용(plan 모드)으로 실행돼요. 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 두세요.',
+  'anthropic-api': '대화만 해요 (도구 없음). 키를 확인하는 요청은 토큰을 쓰지 않아요.',
+  'openai-compat': '대화만 해요 (도구 없음). Ollama, LM Studio, OpenRouter 등 OpenAI 호환 서버를 쓸 수 있어요.',
+});
+
+/**
+ * 카드 하나가 가진 요소들. 구조(연결 목록/종류/스킨·말투 목록)가 같으면 카드를 다시 만들지 않고 값만 갱신해서,
+ * 입력 중인 칸이 사라지지 않게 한다.
+ * @typedef {{ root: HTMLElement, update: (conn: any) => void }} Card
+ * @type {Map<string, Card>}
+ */
+const cards = new Map();
+let cardsSig = '';
+
+/** 연결 하나의 값을 바꿔 저장한다 @param {string} id @param {(c: any) => void} mutate */
+function patchConnection(id, mutate) {
+  const next = state.settings.connections.map((/** @type {any} */ c) => {
+    if (c.id !== id) return c;
+    const copy = structuredClone(c);
+    mutate(copy);
+    return copy;
+  });
+  return save({ connections: next });
+}
+
+/** 입력이 멈추면 저장하는 입력칸 @param {HTMLInputElement} input @param {(value: string) => void} onCommit */
+function debounced(input, onCommit) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const commit = () => {
+    clearTimeout(timer);
+    onCommit(input.value.trim());
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(commit, 700);
+  });
+  input.addEventListener('change', commit);
+}
+
+/** @param {string} tag @param {string} [cls] @param {string} [text] */
+function el(tag, cls = '', text = '') {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+/** @param {any} conn 처음 보는 연결 @returns {Card} */
+function buildCard(conn) {
+  const id = conn.id;
+  const kind = KINDS[/** @type {keyof typeof KINDS} */ (conn.kind)];
+  const root = el('article', 'card');
+  root.dataset.conn = id;
+
+  // 머리: 이름, 종류, 상태, 켜기/삭제
+  const head = el('header');
+  const nameInput = /** @type {HTMLInputElement} */ (el('input', 'conn-name'));
+  nameInput.type = 'text';
+  nameInput.maxLength = 40;
+  nameInput.setAttribute('aria-label', '캐릭터 이름');
+  debounced(nameInput, (v) => v && patchConnection(id, (c) => (c.name = v)));
+  const kindLabel = el('span', 'kind', kind.label);
+  const badge = el('span', 'badge');
+  head.append(nameInput, kindLabel, badge);
+  root.append(head);
+
+  const info = el('pre', 'info');
+  const reason = el('p', 'reason');
+  root.append(info, reason);
+
+  // 켜기 + 삭제
+  const row = el('div', 'inline spread');
+  const enabledLabel = el('label', 'row');
+  const enabled = /** @type {HTMLInputElement} */ (el('input'));
+  enabled.type = 'checkbox';
+  enabled.addEventListener('change', () => patchConnection(id, (c) => (c.enabled = enabled.checked)));
+  enabledLabel.append(enabled, document.createTextNode(' 캐릭터로 화면에 띄우기'));
+  const removeBtn = el('button', '', '삭제');
+  removeBtn.type = 'button';
+  removeBtn.addEventListener('click', async () => {
+    if (!window.confirm(`'${conn.name}' 연결을 삭제할까요? 저장된 API 키도 함께 지워져요.`)) return;
+    apply(await api.removeConnection(id));
+    flashSaved('삭제했어요');
+  });
+  row.append(enabledLabel, removeBtn);
+  root.append(row);
+
+  // 스킨 + 말투
+  const pair = el('div', 'grid2');
+  const skinLabel = el('label', 'field', '스킨');
+  const skinSel = /** @type {HTMLSelectElement} */ (el('select'));
+  skinSel.addEventListener('change', () => patchConnection(id, (c) => (c.skin = skinSel.value)));
+  skinLabel.append(skinSel);
+  const personaLabel = el('label', 'field', '말투');
+  const personaSel = /** @type {HTMLSelectElement} */ (el('select'));
+  personaSel.addEventListener('change', () => patchConnection(id, (c) => (c.persona = personaSel.value)));
+  personaLabel.append(personaSel);
+  pair.append(skinLabel, personaLabel);
+  root.append(pair);
+
+  // 종류별 입력칸
+  /** @type {Record<string, HTMLInputElement>} */
+  const inputs = {};
+  let keyStatus = /** @type {HTMLElement | null} */ (null);
+  for (const f of FIELDS[conn.kind] ?? []) {
+    if (f.type === 'bool') {
+      const lab = el('label', 'row');
+      const cb = /** @type {HTMLInputElement} */ (el('input'));
+      cb.type = 'checkbox';
+      cb.addEventListener('change', () => patchConnection(id, (c) => (c.options[f.key] = cb.checked)));
+      lab.append(cb, document.createTextNode(` ${f.label} `));
+      if (f.hint) lab.append(el('span', 'muted', f.hint));
+      root.append(lab);
+      inputs[f.key] = cb;
+    } else if (f.type === 'key') {
+      const box = el('div', 'field', `${f.label} `);
+      if (f.hint) box.append(el('span', 'muted', f.hint));
+      const inline = el('div', 'inline');
+      const key = /** @type {HTMLInputElement} */ (el('input'));
+      key.type = 'password';
+      key.placeholder = '입력 후 저장';
+      key.autocomplete = 'off';
+      key.spellcheck = false;
+      const save1 = el('button', '', '저장');
+      save1.type = 'button';
+      save1.addEventListener('click', async () => {
+        if (!key.value) return;
+        const r = await api.setSecret(id, key.value);
+        key.value = '';
+        if (r) {
+          apply(r.state);
+          flashSaved(r.result.ok ? '키를 저장했어요' : r.result.reason);
+        }
+      });
+      const del1 = el('button', '', '삭제');
+      del1.type = 'button';
+      del1.addEventListener('click', async () => {
+        const r = await api.setSecret(id, null);
+        if (r) {
+          apply(r.state);
+          flashSaved('키를 삭제했어요');
+        }
+      });
+      inline.append(key, save1, del1);
+      keyStatus = el('span', 'muted');
+      box.append(inline, keyStatus);
+      root.append(box);
+    } else {
+      const lab = el('label', 'field', `${f.label} `);
+      if (f.hint) lab.append(el('span', 'muted', f.hint));
+      const input = /** @type {HTMLInputElement} */ (el('input'));
+      input.type = 'text';
+      input.spellcheck = false;
+      if (f.placeholder) input.placeholder = f.placeholder;
+      debounced(input, (v) => patchConnection(id, (c) => (c.options[f.key] = v)));
+      inputs[f.key] = input;
+      if (f.type === 'dir') {
+        const inline = el('div', 'inline');
+        inline.append(input);
+        const pick = el('button', '', '선택…');
+        pick.type = 'button';
+        pick.addEventListener('click', async () => {
+          const dir = await api.pickDir();
+          if (dir) patchConnection(id, (c) => (c.options[f.key] = dir));
+        });
+        const auto = el('button', '', '자동 지정');
+        auto.type = 'button';
+        auto.title = '이 캐릭터 전용 폴더를 앱 데이터 아래에 정해요';
+        auto.addEventListener('click', () => {
+          const sep = state.defaults.accountDir.includes('\\') ? '\\' : '/';
+          patchConnection(id, (c) => (c.options[f.key] = `${state.defaults.accountDir}${sep}${id}`));
+        });
+        inline.append(pick, auto);
+        lab.append(inline);
+      } else {
+        lab.append(input);
+      }
+      root.append(lab);
+    }
+  }
+
+  // Claude Code: 계정 로그인 도움 + 다시 확인
+  const tools = el('div', 'inline');
+  if (conn.kind === 'claude-code') {
+    const login = el('button', '', '로그인 명령 복사');
+    login.type = 'button';
+    login.title = '이 캐릭터의 계정 설정 폴더로 claude를 실행하는 PowerShell 명령을 복사해요';
+    login.addEventListener('click', async () => {
+      const r = await api.loginCommand(id);
+      if (!r?.ok) return flashSaved(r?.reason ?? '명령을 만들지 못했어요');
+      try {
+        await navigator.clipboard.writeText(r.command);
+        flashSaved('복사했어요. PowerShell에 붙여 넣어 로그인한 뒤 "다시 확인"을 눌러 주세요');
+      } catch {
+        flashSaved(`복사하지 못했어요. 직접 입력해 주세요: ${r.command}`);
+      }
+    });
+    tools.append(login);
+  }
+  const recheck = el('button', '', '다시 확인');
+  recheck.type = 'button';
+  recheck.addEventListener('click', async () => {
+    flashSaved('확인 중…');
+    apply(await api.recheck(id));
+    flashSaved('확인했어요');
+  });
+  tools.append(recheck);
+  root.append(tools, el('p', 'muted', KIND_NOTE[conn.kind] ?? ''));
+
+  /** 현재 값을 화면에 반영 (입력 중인 칸은 건드리지 않는다) @param {any} c */
+  function update(c) {
+    const active = document.activeElement;
+    if (active !== nameInput) nameInput.value = c.name;
+    enabled.checked = c.enabled;
+    for (const [key, input] of Object.entries(inputs)) {
+      if (input.type === 'checkbox') input.checked = c.options[key] !== false;
+      else if (active !== input) input.value = String(c.options[key] ?? '');
+    }
+    // 스킨/말투 목록
+    fillSelect(skinSel, state.skins.map((/** @type {any} */ k) => [k.id, k.name === k.id ? k.id : `${k.name} (${k.id})`]), c.skin);
+    fillSelect(personaSel, state.personas.items.map((/** @type {any} */ p) => [p.id, p.name]), c.persona);
+
+    // 상태 배지
+    const st = state.statuses[c.id];
+    const checking = c.enabled && !!st && !st.checked;
+    badge.textContent = !c.enabled ? '꺼짐' : !st ? '시작 중…' : checking ? '확인 중…' : st.available ? '사용 가능' : '사용 불가';
+    badge.className = `badge ${!c.enabled || !st || checking ? '' : st.available ? 'ok' : 'bad'}`;
+    info.textContent = c.enabled && st?.available ? st.info : '';
+    reason.textContent = c.enabled && st?.checked && !st.available ? st.reason : '';
+
+    if (keyStatus) {
+      const envKey = c.kind === 'anthropic-api' ? state.keyFromEnv.anthropic : state.keyFromEnv.openai;
+      keyStatus.textContent = state.hasKey[c.id] ? '저장된 키가 있어요' : envKey ? '환경변수의 키를 쓰는 중이에요' : '저장된 키 없음';
+    }
+    for (const [key, input] of Object.entries(inputs)) {
+      if (key === 'baseUrl' && c.kind === 'openai-compat') input.placeholder = state.defaults.openaiBaseUrl;
+    }
+  }
+
+  return { root, update };
+}
+
+/** 선택 목록을 채운다. 내용이 같으면 다시 만들지 않는다 (열어 둔 드롭다운이 닫히지 않게). @param {HTMLSelectElement} sel @param {string[][]} pairs @param {string} value */
+function fillSelect(sel, pairs, value) {
+  const sig = pairs.map((p) => p[0]).join('|');
+  if (sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.replaceChildren(...pairs.map(([v, t]) => option(v, t)));
+  }
+  if (pairs.some((p) => p[0] === value)) sel.value = value;
+  else sel.value = '';
+}
+
+function renderConnections() {
+  const list = state.settings.connections;
+  const box = $('#connections');
+  const sig = JSON.stringify(list.map((/** @type {any} */ c) => [c.id, c.kind]));
+  if (sig !== cardsSig) {
+    cardsSig = sig;
+    cards.clear();
+    box.replaceChildren();
+    if (!list.length) box.append(el('p', 'muted', '아직 연결이 없어요. 아래에서 추가해 보세요.'));
+    for (const c of list) {
+      const card = buildCard(c);
+      cards.set(c.id, card);
+      box.append(card.root);
+    }
+  }
+  for (const c of list) cards.get(c.id)?.update(c);
+
+  // 추가 안내
+  const full = list.length >= MAX_CONNECTIONS;
+  /** @type {HTMLButtonElement} */ ($('#addConnection')).disabled = full;
+  $('#addNote').textContent = full
+    ? `연결은 최대 ${MAX_CONNECTIONS}개까지 만들 수 있어요.`
+    : `켜 둔 연결 하나마다 캐릭터가 한 마리씩 나타나요 (${list.filter((/** @type {any} */ c) => c.enabled).length}마리).`;
+}
+
+{
+  const kindSel = /** @type {HTMLSelectElement} */ ($('#addKind'));
+  kindSel.replaceChildren(...KIND_IDS.map((k) => option(k, KINDS[k].label)));
+  $('#addConnection').addEventListener('click', async () => {
+    const r = await api.addConnection(kindSel.value);
+    if (!r) return;
+    apply(r.state);
+    flashSaved(r.error ?? '연결을 추가했어요. 설정을 채우고 상태를 확인해 보세요');
+  });
+}
+
+$('#recheck').addEventListener('click', async () => {
+  flashSaved('모든 연결을 확인하는 중…');
+  apply(await api.recheck());
+  flashSaved('확인했어요');
+});
+
+// ---------------------------------------------------------------- 말투 편집
+
+/** 지금 편집 중인 말투 파일 */
+let editingPersona = '';
+/** 편집창에 내용을 불러온 말투 (같은 파일을 반복해서 다시 읽지 않게) */
+let loadedPersona = '';
+
+function renderPersona() {
+  const items = state.personas.items;
+  const sel = /** @type {HTMLSelectElement} */ ($('#persona'));
+  fillSelect(sel, items.map((/** @type {any} */ p) => [p.id, p.name]), editingPersona);
+  if (!items.some((/** @type {any} */ p) => p.id === editingPersona)) {
+    editingPersona = items[0]?.id ?? '';
+    sel.value = editingPersona;
+  }
+  const ta = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
+  ta.dataset.id = editingPersona;
+  if (editingPersona && loadedPersona !== editingPersona) {
+    loadedPersona = editingPersona;
+    const id = editingPersona;
+    api.personaRead(id).then((/** @type {string | null} */ text) => {
+      if (editingPersona === id && document.activeElement !== ta) ta.value = text ?? '';
+    });
+  }
+  /** @type {HTMLButtonElement} */ ($('#personaDelete')).disabled = items.length <= 1;
+  $('#personaDir').textContent = `저장 위치: ${state.personas.dir}`;
+  const users = state.settings.connections.filter((/** @type {any} */ c) => c.persona === editingPersona).map((/** @type {any} */ c) => c.name);
+  $('#personaUsers').textContent = users.length ? `이 말투를 쓰는 캐릭터: ${users.join(', ')}` : '이 말투를 쓰는 캐릭터가 아직 없어요.';
+}
+
+$('#persona').addEventListener('change', (e) => {
+  editingPersona = /** @type {HTMLSelectElement} */ (e.target).value;
+  loadedPersona = '';
+  renderPersona();
+});
+
+{
+  const ta = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const commit = async () => {
+    clearTimeout(timer);
+    const id = ta.dataset.id;
+    if (id && (await api.personaSave(id, ta.value))) flashSaved();
+  };
+  ta.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(commit, 700);
+  });
+  ta.addEventListener('blur', commit);
+}
+
+$('#personaCreate').addEventListener('click', async () => {
+  const nameEl = /** @type {HTMLInputElement} */ ($('#personaNewName'));
+  const r = await api.personaCreate(nameEl.value, /** @type {HTMLTextAreaElement} */ ($('#personaText')).value);
+  if (!r) return;
+  if (r.result.ok) {
+    nameEl.value = '';
+    editingPersona = r.result.id;
+    loadedPersona = '';
+  }
+  apply(r.state);
+  flashSaved(r.result.ok ? '새 말투를 만들었어요' : r.result.reason);
+});
+
+$('#personaDelete').addEventListener('click', async () => {
+  const id = editingPersona;
+  if (!id || !window.confirm(`'${id.replace(/\.txt$/, '')}' 말투를 삭제할까요? 이 말투를 쓰던 캐릭터는 다른 말투로 바뀌어요.`)) return;
+  const r = await api.personaDelete(id);
+  if (!r) return;
+  loadedPersona = '';
+  apply(r.state);
+  flashSaved(r.result.ok ? '삭제했어요' : r.result.reason);
+});
+
+$('#personaFolder').addEventListener('click', () => api.personaOpenFolder());
+
+// ---------------------------------------------------------------- 스킨 크기
+
+/** 크기를 조정 중인 스킨의 정보 { id, authored, sheets, current } @type {any} */
+let tuneData = null;
+/** 조정할 스킨으로 고른 것 */
+let tuneSkinId = '';
 
 const tuneFields = () => ({
   fw: /** @type {HTMLInputElement} */ ($('#tuneFW')),
@@ -139,11 +486,10 @@ const numOf = (el) => (el.value !== '' && Number.isFinite(Number(el.value)) ? Ma
 
 /** 입력한 값으로 환산 결과와 시트 문제를 보여 준다 */
 function previewTuning() {
-  const info = state.skinTuning;
+  const info = tuneData;
   if (!info) return;
   const { fw, fh, dh } = tuneFields();
-  const t = { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) };
-  const r = applyTuning(info.authored, t);
+  const r = applyTuning(info.authored, { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) });
   $('#tuneResult').textContent =
     `결과: 화면에 ${r.displaySize.w}×${r.displaySize.h}px로 보여요 (배율 ${r.scale}) · 발 위치 (${r.anchor.x}, ${r.anchor.y}) · ` +
     `클릭 영역 x${r.hitbox.x} y${r.hitbox.y} ${r.hitbox.w}×${r.hitbox.h}`;
@@ -153,28 +499,48 @@ function previewTuning() {
     : '';
 }
 
-function renderTuning() {
-  const info = state.skinTuning;
-  $('#tuneSection').hidden = !info;
+/** 입력칸을 현재 저장된 값(없으면 원본 값)으로 채운다 */
+function fillTuning() {
+  const info = tuneData;
   if (!info) return;
   const a = info.authored;
   const cur = info.current ?? {};
   $('#tuneInfo').textContent =
-    `현재 스킨: ${info.id} · 원본 설정: 프레임 ${a.frameSize.w}×${a.frameSize.h}px, 화면 높이 ${Math.round(a.frameSize.h * a.scale)}px${info.current ? ' (조정됨)' : ''}`;
+    `원본 설정: 프레임 ${a.frameSize.w}×${a.frameSize.h}px, 화면 높이 ${Math.round(a.frameSize.h * a.scale)}px${info.current ? ' (조정됨)' : ''}`;
   const { fw, fh, dh } = tuneFields();
-  const editing = [fw, fh, dh].includes(/** @type {any} */ (document.activeElement));
-  if (!editing) {
-    fw.value = String(cur.frameW ?? a.frameSize.w);
-    fh.value = String(cur.frameH ?? a.frameSize.h);
-    dh.value = String(cur.displayH ?? Math.round(a.frameSize.h * a.scale));
-  }
+  fw.value = String(cur.frameW ?? a.frameSize.w);
+  fh.value = String(cur.frameH ?? a.frameSize.h);
+  dh.value = String(cur.displayH ?? Math.round(a.frameSize.h * a.scale));
   previewTuning();
 }
 
+/** 고른 스킨의 정보를 읽어 온다 @param {string} id */
+async function loadTuning(id) {
+  tuneSkinId = id;
+  tuneData = id ? await api.skinInfo(id) : null;
+  $('#tuneInfo').textContent = tuneData ? '' : '이 스킨의 정보를 읽지 못했어요.';
+  fillTuning();
+  /** @type {HTMLButtonElement} */ ($('#tuneApply')).disabled = !tuneData;
+}
+
+function renderTuning() {
+  const skins = state.skins.map((/** @type {any} */ k) => [k.id, k.name === k.id ? k.id : `${k.name} (${k.id})`]);
+  const sel = /** @type {HTMLSelectElement} */ ($('#tuneSkin'));
+  fillSelect(sel, skins, tuneSkinId);
+  // 처음에는 첫 캐릭터의 스킨을 보여 준다
+  if (!tuneSkinId && skins.length) {
+    const first = state.settings.connections[0]?.skin;
+    const id = skins.some((/** @type {string[]} */ p) => p[0] === first) ? first : skins[0][0];
+    sel.value = id;
+    void loadTuning(id);
+  }
+}
+
+$('#tuneSkin').addEventListener('change', (e) => void loadTuning(/** @type {HTMLSelectElement} */ (e.target).value));
 for (const el of Object.values(tuneFields())) el.addEventListener('input', previewTuning);
 
 $('#tuneDetect').addEventListener('click', () => {
-  const info = state.skinTuning;
+  const info = tuneData;
   if (!info) return;
   // idle 시트를 우선하고, 없으면 있는 시트 중 첫 번째로 감지한다.
   const sheet = info.sheets.find((/** @type {any} */ s) => s.anim === 'idle') ?? info.sheets[0];
@@ -184,17 +550,16 @@ $('#tuneDetect').addEventListener('click', () => {
     return;
   }
   const { fw, fh, dh } = tuneFields();
-  const a = info.authored;
   // 표시 높이는 건드리지 않는다. 해상도만 다르면 화면 크기는 그대로 유지된다.
   fw.value = String(found.w);
   fh.value = String(found.h);
-  if (numOf(dh) === undefined) dh.value = String(Math.round(a.frameSize.h * a.scale));
+  if (numOf(dh) === undefined) dh.value = String(Math.round(info.authored.frameSize.h * info.authored.scale));
   previewTuning();
   flashSaved(`${sheet.anim}.png에서 프레임 ${found.w}×${found.h}px를 감지했어요. 적용을 눌러 반영하세요`);
 });
 
 $('#tuneApply').addEventListener('click', async () => {
-  const info = state.skinTuning;
+  const info = tuneData;
   if (!info) return;
   const { fw, fh, dh } = tuneFields();
   const t = { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) };
@@ -203,21 +568,20 @@ $('#tuneApply').addEventListener('click', async () => {
     return;
   }
   if (checkSheets({ w: t.frameW, h: t.frameH }, info.sheets).length && !window.confirm('시트 크기와 맞지 않아 그림이 깨져 보일 수 있어요. 그래도 적용할까요?')) return;
-  const next = { ...state.settings.skinTuning, [info.id]: t };
-  savedEl.textContent = '적용하는 중… 앱이 다시 시작돼요';
-  await save({ skinTuning: next });
+  await save({ skinTuning: { ...state.settings.skinTuning, [info.id]: t } });
+  await loadTuning(info.id); // 이 스킨을 쓰는 펫은 바로 새 크기로 다시 나타난다
 });
 
 $('#tuneReset').addEventListener('click', async () => {
-  const info = state.skinTuning;
+  const info = tuneData;
   if (!info || !info.current) return;
   const next = { ...state.settings.skinTuning };
   delete next[info.id];
-  savedEl.textContent = '원래대로 되돌리는 중… 앱이 다시 시작돼요';
   await save({ skinTuning: next });
+  await loadTuning(info.id);
 });
 
-// --- 정해진 시각 알림 ---
+// ---------------------------------------------------------------- 정해진 시각 알림
 
 /** 화면의 알림 줄들에서 현재 값을 모은다 */
 function collectReminders() {
@@ -280,7 +644,7 @@ function renderReminders() {
       text.addEventListener('change', saveReminders);
 
       row.append(time, text, on, del);
-      for (const el of row.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (el).disabled = !state.settings.spontaneous.enabled;
+      for (const e of row.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (e).disabled = !state.settings.spontaneous.enabled;
       return row;
     }),
   );
@@ -291,10 +655,10 @@ $('#addReminder').addEventListener('click', () => {
   if (next.length <= 20) save(toPatch('spontaneous.reminders', next));
 });
 
-// --- 입력 연결 ---
+// ---------------------------------------------------------------- 나머지 설정 입력 (data-path)
 
-for (const el of document.querySelectorAll('[data-path]')) {
-  const input = /** @type {HTMLInputElement} */ (el);
+for (const e of document.querySelectorAll('[data-path]')) {
+  const input = /** @type {HTMLInputElement} */ (e);
   const path = input.dataset.path ?? '';
   if (input.type === 'checkbox') {
     input.addEventListener('change', () => save(toPatch(path, input.checked)));
@@ -318,90 +682,6 @@ for (const el of document.querySelectorAll('[data-path]')) {
   }
 }
 
-for (const el of document.querySelectorAll('input[name="backend"]')) {
-  el.addEventListener('change', async () => {
-    const next = await api.select(/** @type {HTMLInputElement} */ (el).value);
-    if (next) {
-      state = next;
-      render();
-      flashSaved();
-    }
-  });
-}
-
-$('#skin').addEventListener('change', (e) => {
-  savedEl.textContent = '스킨을 바꾸는 중… 앱이 다시 시작돼요';
-  save(toPatch('general.skin', /** @type {HTMLSelectElement} */ (e.target).value));
-});
-
-// --- 말투 ---
-
-$('#persona').addEventListener('change', (e) => save(toPatch('persona.selected', /** @type {HTMLSelectElement} */ (e.target).value)));
-
-{
-  const ta = /** @type {HTMLTextAreaElement} */ ($('#personaText'));
-  /** @type {NodeJS.Timeout | undefined} */
-  let timer;
-  const commit = async () => {
-    clearTimeout(timer);
-    const id = ta.dataset.id;
-    if (!id) return;
-    const next = await api.personaSave(id, ta.value);
-    if (next) {
-      state = next;
-      flashSaved();
-    }
-  };
-  ta.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(commit, 700);
-  });
-  ta.addEventListener('blur', commit);
-}
-
-$('#personaCreate').addEventListener('click', async () => {
-  const nameEl = /** @type {HTMLInputElement} */ ($('#personaNewName'));
-  const r = await api.personaCreate(nameEl.value, /** @type {HTMLTextAreaElement} */ ($('#personaText')).value);
-  if (!r) return;
-  state = r.state;
-  if (r.result.ok) nameEl.value = '';
-  render();
-  flashSaved(r.result.ok ? '새 말투를 만들었어요' : r.result.reason);
-});
-
-$('#personaDelete').addEventListener('click', async () => {
-  const id = /** @type {HTMLSelectElement} */ ($('#persona')).value;
-  if (!id || !window.confirm(`'${id.replace(/\.txt$/, '')}' 말투를 삭제할까요?`)) return;
-  const r = await api.personaDelete(id);
-  if (!r) return;
-  state = r.state;
-  render();
-  flashSaved(r.result.ok ? '삭제했어요' : r.result.reason);
-});
-
-$('#personaFolder').addEventListener('click', () => api.personaOpenFolder());
-
-$('#saveKey').addEventListener('click', async () => {
-  const input = /** @type {HTMLInputElement} */ ($('#openaiKey'));
-  if (!input.value) return;
-  const r = await api.setSecret('openaiKey', input.value);
-  input.value = '';
-  if (r) {
-    state = r.state;
-    render();
-    flashSaved(r.result.ok ? '키를 저장했어요' : r.result.reason);
-  }
-});
-
-$('#clearKey').addEventListener('click', async () => {
-  const r = await api.setSecret('openaiKey', null);
-  if (r) {
-    state = r.state;
-    render();
-    flashSaved('키를 삭제했어요');
-  }
-});
-
 $('#pickDir').addEventListener('click', async () => {
   const dir = await api.pickDir();
   if (dir) save(toPatch('permissions.workDir', dir));
@@ -409,28 +689,43 @@ $('#pickDir').addEventListener('click', async () => {
 
 $('#resetDir').addEventListener('click', () => save(toPatch('permissions.workDir', '')));
 
-$('#recheck').addEventListener('click', async () => {
-  savedEl.textContent = '확인 중…';
-  const next = await api.recheck();
-  if (next) {
-    state = next;
-    render();
-    flashSaved('확인했어요');
+// ---------------------------------------------------------------- 화면 그리기
+
+function render() {
+  const s = state.settings;
+
+  for (const e of document.querySelectorAll('[data-path]')) {
+    const input = /** @type {HTMLInputElement} */ (e);
+    const value = getPath(s, input.dataset.path ?? '');
+    if (input.type === 'checkbox') input.checked = !!value;
+    else if (document.activeElement !== input) input.value = value ?? '';
   }
-});
 
-// 메뉴 등 다른 곳에서 설정이 바뀌었을 때
-api.onState((/** @type {any} */ next) => {
-  state = next;
-  render();
-});
+  renderConnections();
+  renderPersona();
+  renderTuning();
+  renderReminders();
 
-// --- 탭 ---
+  // 먼저 말 걸기를 끄면 하위 항목을 회색으로 비활성화한다
+  const spOn = !!s.spontaneous.enabled;
+  const spBox = $('#spontaneousOptions');
+  spBox.style.opacity = spOn ? '1' : '0.5';
+  for (const e of spBox.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (e).disabled = !spOn;
+
+  /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
+  $('#loginNote').textContent = state.packaged ? '' : '(설치본에서만 적용돼요)';
+}
+
+// 다른 곳(트레이 메뉴, 점검 결과 도착 등)에서 상태가 바뀌었을 때
+api.onState((/** @type {any} */ next) => apply(next));
+
+// ---------------------------------------------------------------- 탭
 
 const tabButtons = /** @type {HTMLElement[]} */ ([...document.querySelectorAll('[role="tab"]')]);
 
 /** @param {string} id 탭 id ("ai", "persona", ...) */
 function selectTab(id) {
+  if (!tabButtons.some((t) => t.id === `tab-${id}`)) return;
   for (const t of tabButtons) {
     const on = t.id === `tab-${id}`;
     t.setAttribute('aria-selected', String(on));
@@ -460,14 +755,18 @@ for (const t of tabButtons) {
   });
 }
 
+api.onTab((/** @type {string} */ tab) => selectTab(tab));
+
 {
-  let last = null;
-  try {
-    last = localStorage.getItem('aipet.settings.tab');
-  } catch {
-    // 무시
+  let last = state.initialTab || null;
+  if (!last) {
+    try {
+      last = localStorage.getItem('aipet.settings.tab');
+    } catch {
+      // 무시
+    }
   }
-  if (last && tabButtons.some((t) => t.id === `tab-${last}`)) selectTab(last);
+  if (last) selectTab(last);
 }
 
 render();

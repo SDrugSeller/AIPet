@@ -25,7 +25,12 @@ const PERCH_CHANCE = 0.4;
  *   sleepAfterMs: number,
  * }} opts
  */
-export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
+export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
+  /** 펫이 사라진 뒤(연결 삭제 등)에는 타이머가 남아 있어도 아무것도 하지 않는다. */
+  let disposed = false;
+  const emit = () => {
+    if (!disposed) emitRaw();
+  };
   const pet = {
     display: 0,
     x: 0,
@@ -251,6 +256,12 @@ export function createPetEngine({ skin, area, emit, sleepAfterMs }) {
 
   return {
     pet,
+
+    /** 이 펫을 정리한다: 예약된 동작을 모두 취소하고 더는 상태를 알리지 않는다. */
+    dispose() {
+      disposed = true;
+      clearTimer();
+    },
 
     /** 지금 창 위에 올라서 있는가 (테스트/디버그용) */
     get perchedOn() {

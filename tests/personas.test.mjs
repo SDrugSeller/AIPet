@@ -6,7 +6,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { buildSystemPrompt, DEFAULT_PERSONA } from '../src/main/agent/adapter.js';
 import { createPersonaStore, isValidPersonaId, MAX_PERSONA_CHARS } from '../src/main/personas.js';
-import { createStore } from '../src/main/store.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), '..');
 const seedDir = path.join(root, 'personas');
@@ -75,18 +74,6 @@ test('말투 폴더의 .txt가 아닌 파일은 목록에 나오지 않는다', 
   fs.writeFileSync(path.join(dir, '진짜.txt'), 'x');
   const names = createPersonaStore({ dir }).list().map((x) => x.name);
   assert.deepEqual(names, ['진짜']);
-});
-
-test('설정에 저장하는 말투 이름도 안전한 파일 이름만 허용한다', () => {
-  const file = path.join(tmpDir(), 'settings.json');
-  const s = createStore({ file, safeStorage: /** @type {any} */ ({}) });
-  assert.equal(s.get().persona.selected, '기본.txt');
-  s.update({ persona: { selected: '현장냥이.txt' } });
-  assert.equal(s.get().persona.selected, '현장냥이.txt');
-  for (const bad of ['../x.txt', 'a/b.txt', 'noext', '', 5]) {
-    s.update({ persona: { selected: bad } });
-    assert.equal(s.get().persona.selected, '현장냥이.txt', String(bad));
-  }
 });
 
 test('시스템 프롬프트 = 말투 + 도구 안내. 말투가 비어 있으면 기본 말투', () => {

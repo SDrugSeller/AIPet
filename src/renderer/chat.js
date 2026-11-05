@@ -1,27 +1,53 @@
 // @ts-check
-// 말풍선 대화 UI. 사용자/에이전트 텍스트는 항상 textContent로만 넣는다 (HTML로 해석하지 않음).
+// 펫 한 마리의 말풍선 UI(대화창 + 알림 말풍선). 사용자/에이전트 텍스트는 항상 textContent로만 넣는다 (HTML로 해석하지 않음).
+// 펫마다 하나씩 만들어지고, 여러 대화창이 동시에 열릴 수 있다. main이 보내는 이벤트는 main.js가 petId로 골라 여기로 넘긴다.
 
 /**
  * @typedef {{ role: 'user' | 'assistant' | 'error', text: string }} LogEntry
  * @typedef {{ x: number, y: number, w: number, h: number }} Rect
  * @typedef {{ id: string, title: string, detail: string }} PermRequest
- *
- * @param {any} api  preload에서 노출한 API
- * @param {{ open: boolean, busy: boolean, backend: { label: string } | null, log: LogEntry[], pending: PermRequest[] }} initial
+ * @typedef {{ open: boolean, busy: boolean, backend: { label: string } | null, log: LogEntry[], pending: PermRequest[] }} ChatState
  */
-export function createChat(api, initial) {
-  const el = /** @type {HTMLElement} */ (document.getElementById('bubble'));
-  const logEl = /** @type {HTMLElement} */ (document.getElementById('log'));
-  const backendEl = /** @type {HTMLElement} */ (document.getElementById('backend'));
-  const form = /** @type {HTMLFormElement} */ (document.getElementById('composer'));
-  const input = /** @type {HTMLTextAreaElement} */ (document.getElementById('input'));
-  const sendBtn = /** @type {HTMLButtonElement} */ (document.getElementById('send'));
-  const closeBtn = /** @type {HTMLButtonElement} */ (document.getElementById('close'));
-  const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
-  const notice = /** @type {HTMLElement} */ (document.getElementById('notice'));
-  const noticeText = /** @type {HTMLElement} */ (document.getElementById('noticeText'));
 
-  let state = initial;
+/** 말풍선끼리 겹칠 때, 마지막으로 누른 것이 위로 오게 하는 카운터 */
+let zCounter = 10;
+/** 키보드 포커스를 받아야 하는 대화창 (마지막으로 열거나 누른 것) */
+/** @type {{ focusInput: () => void, isShown: () => boolean, bubble: HTMLElement, close: () => void } | null} */
+let activeChat = null;
+
+// 창이 포커스를 받으면(대화창을 열었을 때) 활성 대화창의 입력칸으로 포커스를 옮긴다.
+window.addEventListener('focus', () => {
+  if (activeChat?.isShown()) activeChat.focusInput();
+});
+// Esc는 포커스가 들어 있는 대화창만 닫는다.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && activeChat?.isShown() && activeChat.bubble.contains(document.activeElement)) activeChat.close();
+});
+
+/**
+ * @param {any} api  preload에서 노출한 API
+ * @param {{ id: string, name: string, chat: ChatState }} pet  이 말풍선의 주인
+ * @param {HTMLElement} layer  말풍선들을 붙일 곳
+ * @param {HTMLTemplateElement} template
+ */
+export function createChat(api, pet, layer, template) {
+  const petId = pet.id;
+  const frag = /** @type {DocumentFragment} */ (template.content.cloneNode(true));
+  const el = /** @type {HTMLElement} */ (frag.querySelector('.bubble'));
+  const notice = /** @type {HTMLElement} */ (frag.querySelector('.notice'));
+  /** @param {string} sel */
+  const q = (sel) => /** @type {HTMLElement} */ (el.querySelector(sel));
+  const logEl = q('.log');
+  const nameEl = q('.name');
+  const backendEl = q('.backend');
+  const form = /** @type {HTMLFormElement} */ (q('.composer'));
+  const input = /** @type {HTMLTextAreaElement} */ (q('.input'));
+  const sendBtn = /** @type {HTMLButtonElement} */ (q('.send'));
+  const closeBtn = q('.close');
+  const noticeText = /** @type {HTMLElement} */ (notice.querySelector('.notice-text'));
+  layer.append(el, notice);
+
+  let state = pet.chat;
   let shown = false;
   /** 알림 말풍선이 떠 있어야 하는가 (main이 시간을 재서 보이고 숨긴다) */
   let noticeWanted = false;
@@ -34,6 +60,9 @@ export function createChat(api, initial) {
   let box = null;
   let layoutKey = '';
   let sizeDirty = true;
+
+  /** @param {HTMLElement} target */
+  const raise = (target) => (target.style.zIndex = String(++zCounter));
 
   /** @param {LogEntry['role']} role @param {string} text */
   function addMessage(role, text) {
@@ -64,8 +93,8 @@ export function createChat(api, initial) {
     const deny = document.createElement('button');
     deny.type = 'button';
     deny.textContent = '거부';
-    allow.addEventListener('click', () => api.permRespond(req.id, true));
-    deny.addEventListener('click', () => api.permRespond(req.id, false));
+    allow.addEventListener('click', () => api.permRespond(petId, req.id, true));
+    deny.addEventListener('click', () => api.permRespond(petId, req.id, false));
     actions.append(allow, deny);
     card.append(title, detail, actions);
     logEl.append(card);
@@ -84,7 +113,8 @@ export function createChat(api, initial) {
   }
 
   function renderMeta() {
-    backendEl.textContent = state.backend ? state.backend.label : 'AI 연결 없음 · 펫을 우클릭해 확인하세요';
+    nameEl.textContent = pet.name;
+    backendEl.textContent = state.backend ? '' : '· 연결 확인 필요';
     sendBtn.textContent = state.busy ? '■' : '↑';
     sendBtn.title = state.busy ? '중단' : '보내기 (Enter)';
     sendBtn.setAttribute('aria-label', sendBtn.title);
@@ -104,16 +134,18 @@ export function createChat(api, initial) {
   function submit() {
     const text = input.value.trim();
     if (!text || state.busy) return;
-    api.chatSend(text);
+    api.chatSend(petId, text);
     input.value = '';
     autosize();
   }
+
+  const self = { focusInput, isShown: () => shown, bubble: el, close: () => api.chatClose(petId) };
 
   // --- 이벤트 ---
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (state.busy) api.chatAbort();
+    if (state.busy) api.chatAbort(petId);
     else submit();
   });
   input.addEventListener('input', autosize);
@@ -123,68 +155,82 @@ export function createChat(api, initial) {
       submit();
     }
   });
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && shown) api.chatClose();
+  closeBtn.addEventListener('click', () => api.chatClose(petId));
+  input.addEventListener('pointerdown', () => api.chatFocus(petId));
+  // 이 대화창을 누르면 위로 올리고, 키보드 포커스를 받을 대화창으로 삼는다.
+  el.addEventListener('pointerdown', () => {
+    raise(el);
+    activeChat = self;
   });
-  window.addEventListener('focus', () => {
-    if (shown) input.focus();
-  });
-  closeBtn.addEventListener('click', () => api.chatClose());
-  input.addEventListener('pointerdown', () => api.chatFocus());
-  api.onPermRequest(addPermCard);
-  api.onPermResolved(resolvePermCard);
+  notice.addEventListener('pointerdown', () => raise(notice));
   new ResizeObserver(() => (sizeDirty = true)).observe(el);
   new ResizeObserver(() => (sizeDirty = true)).observe(notice);
 
-  // 알림 말풍선: 글자는 textContent로만 넣는다
-  api.onNoticeShow((/** @type {{ text: string }} */ n) => {
-    noticeText.textContent = n.text;
-    noticeWanted = true;
-    layoutKey = '';
-  });
-  api.onNoticeHide(() => {
-    noticeWanted = false;
-  });
-  $('noticeOpen').addEventListener('click', () => api.noticeAction('open'));
-  $('noticeClose').addEventListener('click', () => api.noticeAction('close'));
-  noticeText.addEventListener('click', () => api.noticeAction('open')); // 말풍선을 누르면 대화로 이어진다
-
-  api.onChatState((/** @type {typeof state} */ s) => {
-    state = { ...state, open: s.open, busy: s.busy, backend: s.backend };
-    renderMeta();
-  });
-
-  api.onChatUser((/** @type {{ text: string }} */ m) => {
-    addMessage('user', m.text);
-    pending = addMessage('assistant', '…');
-    pending.classList.add('typing');
-  });
-
-  api.onAgentEvent((/** @type {any} */ ev) => {
-    if (ev.type === 'text') {
-      if (!pending) pending = addMessage('assistant', '');
-      if (pending.classList.contains('typing')) {
-        pending.classList.remove('typing');
-        pending.textContent = '';
-      }
-      pending.textContent += ev.delta;
-      logEl.scrollTop = logEl.scrollHeight;
-    } else if (ev.type === 'error') {
-      if (pending && pending.classList.contains('typing')) pending.remove();
-      pending = null;
-      addMessage('error', ev.message);
-    } else if (ev.type === 'done') {
-      if (pending && pending.classList.contains('typing')) pending.remove(); // 빈 응답
-      pending = null;
-    }
-  });
+  // 알림 말풍선의 버튼
+  /** @param {string} sel */
+  const nq = (sel) => /** @type {HTMLElement} */ (notice.querySelector(sel));
+  nq('.notice-open').addEventListener('click', () => api.noticeAction(petId, 'open'));
+  nq('.notice-close').addEventListener('click', () => api.noticeAction(petId, 'close'));
+  noticeText.addEventListener('click', () => api.noticeAction(petId, 'open')); // 말풍선을 누르면 대화로 이어진다
 
   // 처음 열린 창에 이미 있는 대화 기록
-  for (const e of initial.log) addMessage(e.role, e.text);
-  for (const p of initial.pending ?? []) addPermCard(p);
+  for (const e of pet.chat.log) addMessage(e.role, e.text);
+  for (const p of pet.chat.pending ?? []) addPermCard(p);
   renderMeta();
 
   return {
+    /** main이 알려 준 대화 상태 (열림/응답 중/연결 정보) @param {ChatState} s */
+    handleState(s) {
+      state = { ...state, open: s.open, busy: s.busy, backend: s.backend };
+      renderMeta();
+    },
+
+    /** 사용자가 보낸 메시지 @param {{ text: string }} m */
+    handleUser(m) {
+      addMessage('user', m.text);
+      pending = addMessage('assistant', '…');
+      pending.classList.add('typing');
+    },
+
+    /** 에이전트 이벤트 (텍스트 조각, 오류, 끝) @param {any} ev */
+    handleAgent(ev) {
+      if (ev.type === 'text') {
+        if (!pending) pending = addMessage('assistant', '');
+        if (pending.classList.contains('typing')) {
+          pending.classList.remove('typing');
+          pending.textContent = '';
+        }
+        pending.textContent += ev.delta;
+        logEl.scrollTop = logEl.scrollHeight;
+      } else if (ev.type === 'error') {
+        if (pending && pending.classList.contains('typing')) pending.remove();
+        pending = null;
+        addMessage('error', ev.message);
+      } else if (ev.type === 'done') {
+        if (pending && pending.classList.contains('typing')) pending.remove(); // 빈 응답
+        pending = null;
+      }
+    },
+
+    handlePermRequest: addPermCard,
+    handlePermResolved: resolvePermCard,
+
+    /** @param {{ text: string }} n */
+    showNotice(n) {
+      noticeText.textContent = n.text;
+      noticeWanted = true;
+      layoutKey = '';
+    },
+    hideNotice() {
+      noticeWanted = false;
+    },
+
+    /** 이름이 바뀌었다 @param {string} name */
+    setName(name) {
+      pet.name = name;
+      renderMeta();
+    },
+
     /**
      * 매 프레임 호출. 펫 위(hit)에 말풍선을 놓는다. hit이 null이면(펫이 다른 모니터) 숨긴다.
      * @param {Rect | null} hit @param {number} viewW @param {number} viewH
@@ -196,7 +242,13 @@ export function createChat(api, initial) {
         el.hidden = !visible;
         layoutKey = '';
         box = null;
-        if (visible) focusInput();
+        if (visible) {
+          raise(el);
+          activeChat = self;
+          focusInput();
+        } else if (activeChat === self) {
+          activeChat = null;
+        }
       }
       // 대화창이 열려 있으면 알림 말풍선은 필요 없다
       const noticeVisible = !!hit && !state.open && noticeWanted;
@@ -227,6 +279,13 @@ export function createChat(api, initial) {
     /** 말풍선이 이 좌표를 덮고 있는가 (마우스를 받아야 하는 영역) @param {number} x @param {number} y */
     contains(x, y) {
       return !!box && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
+    },
+
+    /** 펫이 사라졌다: 말풍선도 치운다. */
+    dispose() {
+      if (activeChat === self) activeChat = null;
+      el.remove();
+      notice.remove();
     },
   };
 }

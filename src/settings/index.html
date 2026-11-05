@@ -15,195 +15,158 @@
       <h1>AIPet 설정</h1>
 
       <nav class="tabs" role="tablist" aria-label="설정 항목">
-        <button type="button" class="tab" role="tab" id="tab-ai" aria-controls="panel-ai" aria-selected="true" tabindex="0">AI 연결</button>
+        <button type="button" class="tab" role="tab" id="tab-ai" aria-controls="panel-ai" aria-selected="true" tabindex="0">연결</button>
         <button type="button" class="tab" role="tab" id="tab-persona" aria-controls="panel-persona" aria-selected="false" tabindex="-1">말투</button>
         <button type="button" class="tab" role="tab" id="tab-pet" aria-controls="panel-pet" aria-selected="false" tabindex="-1">펫</button>
         <button type="button" class="tab" role="tab" id="tab-notice" aria-controls="panel-notice" aria-selected="false" tabindex="-1">알림</button>
         <button type="button" class="tab" role="tab" id="tab-general" aria-controls="panel-general" aria-selected="false" tabindex="-1">일반</button>
       </nav>
 
-      <div class="panel" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" >
-      <section>
-        <h2>AI 연결</h2>
-        <p class="hint">
-          펫이 어떤 AI와 이야기할지 고르세요. 앱은 로그인 정보를 직접 받거나 저장하지 않아요.
-          Claude Code는 터미널에서 직접 로그인한 계정을, 다른 연결은 아래에 입력한 주소/키를 사용해요.
-        </p>
+      <div class="panel" role="tabpanel" id="panel-ai" aria-labelledby="tab-ai">
+        <section>
+          <h2>연결 (캐릭터)</h2>
+          <p class="hint">
+            연결 하나가 화면의 캐릭터 하나예요. 캐릭터마다 AI 계정/서버, 스킨, 말투를 따로 정하고, 각자 자기 대화창으로 이야기해요.
+            앱은 로그인 정보를 직접 받거나 저장하지 않아요. CLI(Claude Code, Codex, Gemini)는 터미널에서 직접 로그인한 계정을,
+            API는 아래에 입력한 키(OS 보안 저장소에 암호화)를 써요.
+          </p>
+          <div id="connections"></div>
+          <div class="inline addrow">
+            <select id="addKind" aria-label="연결 종류"></select>
+            <button type="button" id="addConnection">연결 추가</button>
+            <button type="button" id="recheck">전체 다시 확인</button>
+          </div>
+          <p class="muted" id="addNote"></p>
+        </section>
 
-        <article class="card" data-backend="claude-code">
-          <header>
-            <label class="pick"><input type="radio" name="backend" value="claude-code" /> <strong>Claude Code</strong></label>
-            <span class="badge" data-role="status"></span>
-          </header>
-          <pre class="info" data-role="info"></pre>
-          <p class="reason" data-role="reason"></p>
-          <label class="row"><input type="checkbox" data-path="adapters.claude-code.enabled" /> 사용</label>
-          <label class="row">
-            <input type="checkbox" data-path="adapters.claude-code.tools" />
-            파일·명령 도구 사용 <span class="muted">(위험한 동작은 매번 허용 여부를 물어요)</span>
-          </label>
-          <label class="field">claude 실행 파일 경로 <span class="muted">(비우면 자동 탐지)</span>
-            <input type="text" data-path="adapters.claude-code.path" placeholder="자동 탐지" spellcheck="false" />
-          </label>
-        </article>
-
-        <article class="card" data-backend="openai-compat">
-          <header>
-            <label class="pick"><input type="radio" name="backend" value="openai-compat" /> <strong>Ollama / OpenAI 호환</strong></label>
-            <span class="badge" data-role="status"></span>
-          </header>
-          <pre class="info" data-role="info"></pre>
-          <p class="reason" data-role="reason"></p>
-          <label class="row"><input type="checkbox" data-path="adapters.openai-compat.enabled" /> 사용</label>
-          <label class="field">서버 주소
-            <input type="text" id="openaiBaseUrl" data-path="adapters.openai-compat.baseUrl" spellcheck="false" />
-          </label>
-          <label class="field">모델 <span class="muted">(비우면 서버의 첫 모델)</span>
-            <input type="text" data-path="adapters.openai-compat.model" placeholder="예: llama3.2" spellcheck="false" />
-          </label>
-          <div class="field">API 키 <span class="muted">(선택, OS 보안 저장소에 암호화해 저장돼요)</span>
+        <section>
+          <h2>권한</h2>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
+          <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
             <div class="inline">
-              <input type="password" id="openaiKey" placeholder="입력 후 저장" autocomplete="off" spellcheck="false" />
-              <button type="button" id="saveKey">저장</button>
-              <button type="button" id="clearKey">삭제</button>
+              <input type="text" id="workDir" readonly />
+              <button type="button" id="pickDir">선택…</button>
+              <button type="button" id="resetDir">기본값</button>
             </div>
-            <span class="muted" id="keyStatus"></span>
           </div>
-          <p class="muted">이 연결은 대화만 가능해요 (파일·명령 도구 없음).</p>
-        </article>
-
-        <button type="button" id="recheck">연결 다시 확인</button>
-      </section>
-
-      <section>
-        <h2>권한</h2>
-        <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
-        <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
-          <div class="inline">
-            <input type="text" id="workDir" readonly />
-            <button type="button" id="pickDir">선택…</button>
-            <button type="button" id="resetDir">기본값</button>
-          </div>
-        </div>
-        <p class="muted">파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.</p>
-      </section>
-
+          <p class="muted">
+            파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.
+            이 승인은 Claude Code 연결에서만 쓰여요. Codex·Gemini CLI는 읽기 전용으로, API 연결은 대화만 해요.
+          </p>
+        </section>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-persona" aria-labelledby="tab-persona" hidden>
-      <section>
-        <h2>말투</h2>
-        <p class="hint">펫이 어떤 말투와 성격으로 대답할지 정하는 프롬프트예요. 말투 하나가 텍스트 파일 하나이고, 아래 폴더에 저장돼요.</p>
-        <label class="field">말투 선택
-          <select id="persona"></select>
-        </label>
-        <label class="field">프롬프트 <span class="muted">(고르면 내용이 아래에 나오고, 고치면 자동 저장돼요)</span>
-          <textarea id="personaText" rows="7" spellcheck="false"></textarea>
-        </label>
-        <div class="inline">
-          <button type="button" id="personaDelete">이 말투 삭제</button>
-          <button type="button" id="personaFolder">폴더 열기</button>
-        </div>
-        <div class="field">새 말투 만들기 <span class="muted">(위 프롬프트 내용을 복사해 새 파일로 저장해요)</span>
+        <section>
+          <h2>말투</h2>
+          <p class="hint">
+            펫이 어떤 말투와 성격으로 대답할지 정하는 프롬프트예요. 말투 하나가 텍스트 파일 하나이고, 아래 폴더에 저장돼요.
+            어떤 캐릭터가 어떤 말투를 쓸지는 "연결" 탭에서 캐릭터마다 골라요.
+          </p>
+          <label class="field">편집할 말투
+            <select id="persona"></select>
+          </label>
+          <label class="field">프롬프트 <span class="muted">(고치면 자동 저장돼요)</span>
+            <textarea id="personaText" rows="7" spellcheck="false"></textarea>
+          </label>
+          <p class="muted" id="personaUsers"></p>
           <div class="inline">
-            <input type="text" id="personaNewName" placeholder="이름 (예: 츤데레)" maxlength="40" />
-            <button type="button" id="personaCreate">추가</button>
+            <button type="button" id="personaDelete">이 말투 삭제</button>
+            <button type="button" id="personaFolder">폴더 열기</button>
           </div>
-        </div>
-        <p class="muted" id="personaDir"></p>
-        <p class="muted">다음 메시지부터 적용돼요. Claude Code는 말투를 바꾸면 새 대화로 시작해서 이전 대화 내용은 기억하지 못해요.</p>
-      </section>
-
+          <div class="field">새 말투 만들기 <span class="muted">(위 프롬프트 내용을 복사해 새 파일로 저장해요)</span>
+            <div class="inline">
+              <input type="text" id="personaNewName" placeholder="이름 (예: 츤데레)" maxlength="40" />
+              <button type="button" id="personaCreate">추가</button>
+            </div>
+          </div>
+          <p class="muted" id="personaDir"></p>
+          <p class="muted">다음 메시지부터 적용돼요. Claude Code는 말투를 바꾸면 새 대화로 시작해서 이전 대화 내용은 기억하지 못해요.</p>
+        </section>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-pet" aria-labelledby="tab-pet" hidden>
-      <section>
-        <h2>스킨</h2>
-        <label class="field">펫 스킨 <span class="muted">(바꾸면 앱이 다시 시작돼요)</span>
-          <select id="skin"></select>
-        </label>
-      </section>
-
-      <section id="tuneSection" hidden>
-        <h2>스킨 크기</h2>
-        <p class="hint">
-          시트(PNG)의 한 칸(프레임)이 몇 픽셀인지와, 화면에서 펫이 몇 픽셀 높이로 보일지를 정해요.
-          이 값에 맞춰 <strong>크기, 발 위치(앵커), 클릭 영역(히트박스)이 자동으로 조절돼요.</strong>
-          다른 해상도의 그림으로 바꿨을 때 써 보세요.
-        </p>
-        <p class="muted" id="tuneInfo"></p>
-        <div class="grid3">
-          <label class="field">프레임 너비 (px)
-            <input type="number" id="tuneFW" min="8" max="2048" />
+        <section id="tuneSection">
+          <h2>스킨 크기</h2>
+          <p class="hint">
+            시트(PNG)의 한 칸(프레임)이 몇 픽셀인지와, 화면에서 펫이 몇 픽셀 높이로 보일지를 정해요.
+            이 값에 맞춰 <strong>크기, 발 위치(앵커), 클릭 영역(히트박스)이 자동으로 조절돼요.</strong>
+            다른 해상도의 그림으로 바꿨을 때 써 보세요. 스킨 자체는 "연결" 탭에서 캐릭터마다 골라요.
+          </p>
+          <label class="field">크기를 조정할 스킨
+            <select id="tuneSkin"></select>
           </label>
-          <label class="field">프레임 높이 (px)
-            <input type="number" id="tuneFH" min="8" max="2048" />
-          </label>
-          <label class="field">화면에 표시할 높이 (px)
-            <input type="number" id="tuneDH" min="16" max="1024" />
-          </label>
-        </div>
-        <p class="muted" id="tuneResult"></p>
-        <p class="reason" id="tuneProblems"></p>
-        <div class="inline">
-          <button type="button" id="tuneDetect">시트에서 자동 감지</button>
-          <button type="button" id="tuneApply">적용 (앱 다시 시작)</button>
-          <button type="button" id="tuneReset">원래대로</button>
-        </div>
-      </section>
+          <p class="muted" id="tuneInfo"></p>
+          <div class="grid3">
+            <label class="field">프레임 너비 (px)
+              <input type="number" id="tuneFW" min="8" max="2048" />
+            </label>
+            <label class="field">프레임 높이 (px)
+              <input type="number" id="tuneFH" min="8" max="2048" />
+            </label>
+            <label class="field">화면에 표시할 높이 (px)
+              <input type="number" id="tuneDH" min="16" max="1024" />
+            </label>
+          </div>
+          <p class="muted" id="tuneResult"></p>
+          <p class="reason" id="tuneProblems"></p>
+          <div class="inline">
+            <button type="button" id="tuneDetect">시트에서 자동 감지</button>
+            <button type="button" id="tuneApply">적용</button>
+            <button type="button" id="tuneReset">원래대로</button>
+          </div>
+        </section>
 
-      <section>
-        <h2>행동</h2>
-        <label class="row">
-          <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
-          <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
-        </label>
-        <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
-      </section>
-
+        <section>
+          <h2>행동</h2>
+          <label class="row">
+            <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
+            <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
+          </label>
+          <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
+        </section>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-notice" aria-labelledby="tab-notice" hidden>
-      <section>
-        <h2>먼저 말 걸기</h2>
-        <p class="hint">
-          펫이 부르지 않았는데 말풍선으로 알려 주는 기능이에요. 정해진 문구나 이미 받은 답을 보여 줄 뿐,
-          <strong>AI를 호출하지 않아서 토큰을 쓰지 않아요.</strong>
-          방해 금지일 때, 전체화면 앱이나 발표 중일 때, 대화 중일 때는 말하지 않아요.
-        </p>
-        <label class="row"><input type="checkbox" data-path="spontaneous.enabled" /> <strong>먼저 말 걸기 사용</strong> <span class="muted">(끄면 아래 항목이 모두 멈춰요)</span></label>
-        <div id="spontaneousOptions">
-        <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
-        <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
-        <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
-        <label class="field">쉬지 않고 쓴 시간이 이만큼(분) 넘으면
-          <input type="number" min="5" max="600" data-path="spontaneous.breakAfterMin" />
-        </label>
-        <label class="field">쉬라고 할 때 하는 말
-          <input type="text" data-path="spontaneous.breakMessage" maxlength="200" />
-        </label>
-        <label class="field">먼저 말을 거는 최소 간격(분)
-          <input type="number" min="1" max="600" data-path="spontaneous.cooldownMin" />
-        </label>
-        <div class="field">정해진 시각 알림
-          <div id="reminders"></div>
-          <button type="button" id="addReminder">알림 추가</button>
-        </div>
-        </div>
-      </section>
-
+        <section>
+          <h2>먼저 말 걸기</h2>
+          <p class="hint">
+            펫이 부르지 않았는데 말풍선으로 알려 주는 기능이에요. 정해진 문구나 이미 받은 답을 보여 줄 뿐,
+            <strong>AI를 호출하지 않아서 토큰을 쓰지 않아요.</strong>
+            방해 금지일 때, 전체화면 앱이나 발표 중일 때, 대화 중일 때는 말하지 않아요.
+            쉬라는 말과 시각 알림은 첫 번째 캐릭터가 말해요.
+          </p>
+          <label class="row"><input type="checkbox" data-path="spontaneous.enabled" /> <strong>먼저 말 걸기 사용</strong> <span class="muted">(끄면 아래 항목이 모두 멈춰요)</span></label>
+          <div id="spontaneousOptions">
+            <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
+            <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
+            <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
+            <label class="field">쉬지 않고 쓴 시간이 이만큼(분) 넘으면
+              <input type="number" min="5" max="600" data-path="spontaneous.breakAfterMin" />
+            </label>
+            <label class="field">쉬라고 할 때 하는 말
+              <input type="text" data-path="spontaneous.breakMessage" maxlength="200" />
+            </label>
+            <label class="field">먼저 말을 거는 최소 간격(분)
+              <input type="number" min="1" max="600" data-path="spontaneous.cooldownMin" />
+            </label>
+            <div class="field">정해진 시각 알림
+              <div id="reminders"></div>
+              <button type="button" id="addReminder">알림 추가</button>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" hidden>
-      <section>
-        <h2>앱 동작</h2>
-        <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
-        <label class="row">
-          <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
-          <span class="muted" id="loginNote"></span>
-        </label>
-      </section>
-
+        <section>
+          <h2>앱 동작</h2>
+          <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
+          <label class="row">
+            <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
+            <span class="muted" id="loginNote"></span>
+          </label>
+        </section>
       </div>
 
       <footer><span id="saved" aria-live="polite"></span></footer>

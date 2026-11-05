@@ -4,23 +4,16 @@
 //
 // 권한 요청: `--input-format stream-json --permission-prompt-tool stdio`로 실행하면 CLI가 도구를 쓰기 전에
 // stdout으로 control_request(can_use_tool)를 보내고, 우리가 stdin으로 control_response(allow/deny)를 돌려준다.
-import { spawn } from 'node:child_process';
+//
+// 여러 계정: CLI는 설정 폴더(CLAUDE_CONFIG_DIR)마다 로그인 상태를 따로 가진다.
+// 연결마다 configDir을 다르게 주면 계정이 분리된다. (각 폴더에서 한 번씩 로그인해 둬야 한다)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { cleanEnv, findOnPath, isFile, isWin, killTree, readLines, run, spawnCli } from './cli.js';
 
-const isWin = process.platform === 'win32';
 const exe = isWin ? '.exe' : '';
-
-/** @param {string} p */
-const isFile = (p) => {
-  try {
-    return fs.statSync(p).isFile();
-  } catch {
-    return false;
-  }
-};
 
 /**
  * `claude` 실행 파일을 찾는다. 순서: 직접 지정한 경로 → PATH → 공식 설치 위치 → VS Code 확장에 포함된 바이너리.
@@ -31,14 +24,8 @@ const isFile = (p) => {
 export function findClaudeBinary(env = process.env, override = '') {
   if (override) return isFile(override) ? override : null;
 
-  const names = isWin ? [`claude${exe}`, 'claude.cmd'] : ['claude'];
-  for (const dir of (env.PATH ?? env.Path ?? '').split(path.delimiter)) {
-    if (!dir) continue;
-    for (const n of names) {
-      const p = path.join(dir, n);
-      if (isFile(p)) return p;
-    }
-  }
+  const onPath = findOnPath('claude', env);
+  if (onPath) return onPath;
 
   const home = os.homedir();
   for (const p of [
@@ -63,49 +50,6 @@ export function findClaudeBinary(env = process.env, override = '') {
     // 확장 폴더 없음
   }
   return null;
-}
-
-/** cmd.exe용 인자 인용 (.cmd 셔임 실행 시에만 사용) @param {string} s */
-const quoteWin = (s) => (/^[\w@%+=:,./\\-]+$/.test(s) ? s : `"${s.replace(/"/g, '""')}"`);
-
-/** .cmd/.bat 셔임은 셸이 필요하다. 사용자 입력은 인자로 넘기지 않고 stdin으로만 보낸다. */
-/** @param {string} bin @param {string[]} args @param {import('node:child_process').SpawnOptions} opts */
-function spawnCli(bin, args, opts) {
-  if (/\.(cmd|bat)$/i.test(bin)) {
-    return spawn([bin, ...args].map(quoteWin).join(' '), { ...opts, shell: true });
-  }
-  return spawn(bin, args, opts);
-}
-
-/** 자식 프로세스에 넘길 환경변수 (Electron 전용 변수는 제거) */
-function cleanEnv() {
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
-  return env;
-}
-
-/**
- * 짧게 끝나는 명령을 실행해 출력을 모은다.
- * @param {string} bin @param {string[]} args @param {number} timeoutMs
- * @returns {Promise<{ code: number | null, stdout: string, stderr: string }>}
- */
-function run(bin, args, timeoutMs) {
-  return new Promise((resolve) => {
-    const child = spawnCli(bin, args, { env: cleanEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => child.kill(), timeoutMs);
-    child.stdout?.setEncoding('utf8').on('data', (d) => (stdout += d));
-    child.stderr?.setEncoding('utf8').on('data', (d) => (stderr += d));
-    child.on('error', (e) => {
-      clearTimeout(timer);
-      resolve({ code: null, stdout, stderr: String(e.message) });
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
-    });
-  });
 }
 
 /**
@@ -174,19 +118,19 @@ export function translateClaudeMessage(msg, st) {
 
 /**
  * @param {{
- *   getConfig: () => { path: string, tools: boolean, workDir: string, persona?: string },
+ *   getConfig: () => { path: string, configDir?: string, tools: boolean, workDir: string, persona?: string },
  *   metaDir: string,
  * }} opts
  *   workDir: 에이전트가 접근하는 작업 폴더. CLI는 항상 여기서 실행된다.
- *   metaDir: 페르소나 파일 등 에이전트가 건드리면 안 되는 파일을 두는 폴더.
+ *   metaDir: 페르소나 파일 등 에이전트가 건드리면 안 되는 파일을 두는 폴더. 연결마다 따로 쓴다.
  * @returns {import('./adapter.js').AgentAdapter}
  */
 export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   /** @type {string | null} 이어서 대화하기 위한 세션 ID */
   let sessionId = null;
   /**
-   * 세션이 만들어졌을 때의 작업 폴더와 시스템 프롬프트. CLI는 처음 보낸 시스템 프롬프트를 세션에 기록해 두고
-   * 이어 말할 때 그대로 다시 쓰므로, 이 값이 바뀌면(말투/도구/폴더 변경) 새 세션으로 시작해야 한다.
+   * 세션이 만들어졌을 때의 작업 폴더/계정/시스템 프롬프트. CLI는 처음 보낸 시스템 프롬프트를 세션에 기록해 두고
+   * 이어 말할 때 그대로 다시 쓰므로, 이 값이 바뀌면(말투/도구/폴더/계정 변경) 새 세션으로 시작해야 한다.
    */
   let sessionKey = '';
   /** @type {import('node:child_process').ChildProcess | null} */
@@ -194,6 +138,9 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   /** @type {StreamState | null} */
   let current = null;
   let aborted = false;
+
+  /** 계정을 분리하려면 연결마다 다른 설정 폴더를 CLI에 알려 준다. @param {{ configDir?: string }} cfg */
+  const envFor = (cfg) => (cfg.configDir ? { CLAUDE_CONFIG_DIR: cfg.configDir } : {});
 
   /** @param {unknown} obj */
   const writeLine = (obj) => {
@@ -205,24 +152,31 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
     label: 'Claude Code',
 
     async detect() {
-      const bin = findClaudeBinary(process.env, getConfig().path);
+      const cfg = getConfig();
+      const bin = findClaudeBinary(process.env, cfg.path);
       if (!bin) {
         return {
           ok: false,
-          reason: getConfig().path
+          reason: cfg.path
             ? '지정한 경로에서 claude를 찾을 수 없어요. 설정에서 경로를 확인해 주세요.'
             : 'claude CLI를 찾을 수 없어요. Claude Code를 설치한 뒤 터미널에서 claude로 로그인해 주세요.',
         };
       }
-      const v = await run(bin, ['--version'], 15000);
+      const env = envFor(cfg);
+      const v = await run(bin, ['--version'], 15000, env);
       if (v.code !== 0) return { ok: false, reason: `claude 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
 
-      const a = await run(bin, ['auth', 'status'], 15000);
+      const a = await run(bin, ['auth', 'status'], 15000, env);
       let info = `${v.stdout.trim()} · ${bin}`;
       try {
         const s = JSON.parse(a.stdout);
         if (s.loggedIn === false) {
-          return { ok: false, reason: 'claude에 로그인되어 있지 않아요. 터미널에서 claude를 실행해 로그인해 주세요.' };
+          return {
+            ok: false,
+            reason: cfg.configDir
+              ? `이 설정 폴더(${cfg.configDir})에는 로그인된 계정이 없어요. 아래 "로그인 명령 복사"로 터미널에서 로그인해 주세요.`
+              : 'claude에 로그인되어 있지 않아요. 터미널에서 claude를 실행해 로그인해 주세요.',
+          };
         }
         const who = [s.authMethod, s.email, s.orgName].filter((x) => typeof x === 'string' && x).join(' · ');
         info = `로그인: ${who || '확인됨'}\n${v.stdout.trim()} · ${bin}`;
@@ -246,7 +200,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         fs.mkdirSync(cfg.workDir, { recursive: true });
         fs.mkdirSync(metaDir, { recursive: true });
         const systemPrompt = buildSystemPrompt(cfg.persona, cfg.tools);
-        const key = JSON.stringify([cfg.workDir, cfg.tools, systemPrompt]);
+        const key = JSON.stringify([cfg.workDir, cfg.configDir ?? '', cfg.tools, systemPrompt]);
         const personaFile = path.join(metaDir, 'system-prompt.txt');
         fs.writeFileSync(personaFile, systemPrompt, 'utf8');
 
@@ -270,10 +224,9 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         queue.push({ type: 'status', state: 'thinking' });
         st.status = 'thinking';
 
-        const c = spawnCli(bin, args, { cwd: cfg.workDir, env: cleanEnv(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        const c = spawnCli(bin, args, { cwd: cfg.workDir, env: cleanEnv(envFor(cfg)), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
         child = c;
         let stderr = '';
-        let buf = '';
 
         /** @param {string} line */
         const onLine = (line) => {
@@ -292,15 +245,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
           if (st.finished) c.stdin?.end(); // 한 번의 대화가 끝나면 CLI가 종료되도록 입력을 닫는다
         };
 
-        c.stdout?.setEncoding('utf8').on('data', (chunk) => {
-          buf += chunk;
-          let i;
-          while ((i = buf.indexOf('\n')) >= 0) {
-            const line = buf.slice(0, i).trim();
-            buf = buf.slice(i + 1);
-            if (line) onLine(line);
-          }
-        });
+        readLines(c.stdout, onLine);
         c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
         c.on('error', (e) => {
           st.finished = true;
@@ -344,7 +289,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
 
     abort() {
       aborted = true;
-      child?.kill();
+      killTree(child);
     },
 
     reset() {

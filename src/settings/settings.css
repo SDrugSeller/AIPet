@@ -297,3 +297,66 @@ footer {
   color: var(--muted);
   min-height: 34px;
 }
+
+/* --- 연결(캐릭터) 카드 --- */
+
+.card header {
+  gap: 10px;
+}
+
+.conn-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+input.conn-name {
+  padding: 5px 8px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+input.conn-name:hover,
+input.conn-name:focus {
+  background: var(--input-bg);
+  border-color: var(--border);
+}
+
+.kind {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.inline.spread {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inline.addrow {
+  align-items: center;
+  margin-top: 10px;
+}
+
+.inline.addrow select {
+  flex: 1;
+  margin-top: 0;
+}
+
+.card .inline {
+  flex-wrap: wrap;
+}
+
+.card .field .inline input {
+  min-width: 0;
+}

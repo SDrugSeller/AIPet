@@ -152,7 +152,7 @@ test('꺼 둔 알림은 울리지 않는다', () => {
 test('작업 완료 알림: 대화창이 닫혀 있을 때만, 방해 금지/전체화면을 지킨다', () => {
   const ok = setup();
   assert.equal(ok.n.onTaskDone({ ok: true, text: '파일을\n만들었어요' }), true);
-  assert.deepEqual(ok.shown, [{ text: '파일을 만들었어요', kind: 'done' }]);
+  assert.deepEqual(ok.shown, [{ text: '파일을 만들었어요', kind: 'done', petId: undefined }]);
 
   assert.equal(setup({}, { dnd: true }).n.onTaskDone({ ok: true, text: 'x' }), false);
   assert.equal(setup({}, { fullscreen: true }).n.onTaskDone({ ok: true, text: 'x' }), false);

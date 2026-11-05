@@ -21,7 +21,7 @@ const REMINDER_GRACE_MIN = 30;
  *   getSettings: () => SpontaneousSettings,
  *   getQuiet: () => Quiet,
  *   idleSeconds: () => number,
- *   show: (msg: { text: string, kind: string }) => void,
+ *   show: (msg: { text: string, kind: string, petId?: string }) => void,
  *   now?: () => number,
  * }} deps
  */
@@ -100,13 +100,13 @@ export function createNotifier({ getSettings, getQuiet, idleSeconds, show, now =
 
     /**
      * 사용자가 시킨 일이 끝났는데 대화창이 닫혀 있다 → 말풍선으로 알려 준다.
-     * @param {{ ok: boolean, text: string }} r
+     * @param {{ ok: boolean, text: string, petId?: string }} r  petId: 일을 끝낸 펫 (그 펫이 말한다)
      */
-    onTaskDone({ ok, text }) {
+    onTaskDone({ ok, text, petId }) {
       if (!getSettings().notifyDone || !canSpeak('event')) return false;
       const oneLine = String(text ?? '').replace(/\s+/g, ' ').trim();
       const snippet = oneLine.length > 140 ? `${oneLine.slice(0, 140)}…` : oneLine;
-      show({ text: ok ? snippet || '다 했어요!' : `문제가 생겼어요: ${snippet}`, kind: 'done' });
+      show({ text: ok ? snippet || '다 했어요!' : `문제가 생겼어요: ${snippet}`, kind: 'done', petId });
       return true;
     },
   };

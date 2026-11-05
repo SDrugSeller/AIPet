@@ -12,27 +12,32 @@
   <body>
     <canvas id="stage"></canvas>
 
-    <!-- 말풍선: 펫이 있는 모니터의 창에서만 보인다 -->
-    <section id="bubble" hidden aria-label="펫과 대화">
-      <header id="meta">
-        <span id="backend"></span>
-        <button id="close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
-      </header>
-      <div id="log" role="log" aria-live="polite"></div>
-      <form id="composer" autocomplete="off">
-        <textarea id="input" rows="1" maxlength="8000" placeholder="무엇을 도와줄까요?" spellcheck="false"></textarea>
-        <button id="send" type="submit" title="보내기 (Enter)" aria-label="보내기">↑</button>
-      </form>
-    </section>
+    <!-- 펫마다 말풍선과 알림 말풍선이 하나씩 여기에 만들어진다 -->
+    <div id="layer"></div>
 
-    <!-- 알림 말풍선: 펫이 먼저 말을 걸 때(쉬라는 안내, 정해진 시각 알림, 작업 완료) 잠깐 뜬다 -->
-    <section id="notice" hidden role="status" aria-live="polite">
-      <p id="noticeText"></p>
-      <div class="actions">
-        <button type="button" id="noticeOpen">대화하기</button>
-        <button type="button" id="noticeClose">닫기</button>
-      </div>
-    </section>
+    <template id="pet-ui">
+      <!-- 대화창: 펫이 있는 모니터의 창에서만 보인다 -->
+      <section class="bubble" hidden aria-label="펫과 대화">
+        <header class="meta">
+          <span class="who"><strong class="name"></strong> <span class="backend"></span></span>
+          <button class="close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
+        </header>
+        <div class="log" role="log" aria-live="polite"></div>
+        <form class="composer" autocomplete="off">
+          <textarea class="input" rows="1" maxlength="8000" placeholder="무엇을 도와줄까요?" spellcheck="false"></textarea>
+          <button class="send" type="submit" title="보내기 (Enter)" aria-label="보내기">↑</button>
+        </form>
+      </section>
+
+      <!-- 알림 말풍선: 펫이 먼저 말을 걸 때(쉬라는 안내, 정해진 시각 알림, 작업 완료) 잠깐 뜬다 -->
+      <section class="notice" hidden role="status" aria-live="polite">
+        <p class="notice-text"></p>
+        <div class="actions">
+          <button type="button" class="notice-open">대화하기</button>
+          <button type="button" class="notice-close">닫기</button>
+        </div>
+      </section>
+    </template>
 
     <script type="module" src="main.js"></script>
   </body>

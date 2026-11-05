@@ -45,7 +45,7 @@ body {
 
 /* --- 말풍선 --- */
 
-#bubble {
+.bubble {
   position: fixed;
   left: 0;
   top: 0;
@@ -60,12 +60,12 @@ body {
   --tail: 150px;
 }
 
-#bubble[hidden] {
+.bubble[hidden] {
   display: none;
 }
 
 /* 펫을 가리키는 꼬리 */
-#bubble::after {
+.bubble::after {
   content: '';
   position: absolute;
   left: calc(var(--tail) - 7px);
@@ -78,7 +78,7 @@ body {
   transform: rotate(45deg);
 }
 
-#meta {
+.meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -87,7 +87,7 @@ body {
   font-size: 11px;
 }
 
-#close {
+.close {
   border: 0;
   background: none;
   color: inherit;
@@ -97,11 +97,11 @@ body {
   cursor: pointer;
 }
 
-#close:hover {
+.close:hover {
   color: var(--bubble-fg);
 }
 
-#log {
+.log {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -112,7 +112,7 @@ body {
   white-space: pre-wrap;
 }
 
-#log:empty {
+.log:empty {
   display: none;
 }
 
@@ -154,7 +154,7 @@ body {
 
 /* --- 알림 말풍선 --- */
 
-#notice {
+.notice {
   position: fixed;
   left: 0;
   top: 0;
@@ -169,11 +169,11 @@ body {
   --tail: 130px;
 }
 
-#notice[hidden] {
+.notice[hidden] {
   display: none;
 }
 
-#notice::after {
+.notice::after {
   content: '';
   position: absolute;
   left: calc(var(--tail) - 7px);
@@ -186,20 +186,20 @@ body {
   transform: rotate(45deg);
 }
 
-#notice p {
+.notice p {
   margin: 0 0 8px;
   cursor: pointer;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
-#notice .actions {
+.notice .actions {
   display: flex;
   gap: 6px;
   justify-content: flex-end;
 }
 
-#notice button {
+.notice button {
   padding: 3px 12px;
   font: inherit;
   color: var(--bubble-fg);
@@ -209,7 +209,7 @@ body {
   cursor: pointer;
 }
 
-#notice button#noticeOpen {
+.notice button.notice-open {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -261,18 +261,18 @@ body {
   border-color: var(--bubble-border);
 }
 
-#composer {
+.composer {
   display: flex;
   align-items: flex-end;
   gap: 6px;
   margin: 8px 0 0;
 }
 
-#log:empty + #composer {
+.log:empty + .composer {
   margin-top: 0;
 }
 
-#input {
+.input {
   flex: 1;
   box-sizing: border-box;
   resize: none;
@@ -287,11 +287,11 @@ body {
   user-select: text;
 }
 
-#input:focus {
+.input:focus {
   border-color: var(--accent);
 }
 
-#send {
+.send {
   flex: none;
   width: 30px;
   height: 30px;
@@ -303,6 +303,23 @@ body {
   cursor: pointer;
 }
 
-#send:hover {
+.send:hover {
   filter: brightness(1.08);
+}
+
+.meta .who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta .name {
+  color: var(--bubble-fg);
+  font-size: 12px;
+}
+
+.bubble,
+.notice {
+  z-index: 10; /* 여러 마리의 말풍선이 겹치면 마지막으로 누른 것이 위로 올라온다 (JS에서 z-index를 올린다) */
 }

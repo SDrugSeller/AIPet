@@ -16,17 +16,21 @@ npm run lint
 ```
 
 - 펫을 **클릭**하면 말풍선 입력창이 열리고, **드래그**하면 옮길 수 있습니다.
-- **트레이 아이콘**: 왼쪽 클릭은 펫 숨기기/보이기, 오른쪽 클릭은 메뉴(AI 연결 선택, 설정, 종료). 펫을 우클릭해도 같은 메뉴가 나옵니다.
-- **설정**(메뉴 → 설정…, 탭: AI 연결 / 말투 / 펫 / 알림 / 일반): AI 연결 사용/경로/주소/모델/API 키, 도구 사용, 작업 폴더, 알림음, 로그인 시 자동 시작. 값은 바꾸는 즉시 저장되고 재시작해도 유지됩니다 (`%APPDATA%/aipet/settings.json`).
-- AI 연결:
-  - **Claude Code**: 공식 `claude` CLI를 설치하고 터미널에서 한 번 로그인해 두면 자동으로 감지합니다. (설정에서 지정한 경로 → PATH → 공식 설치 위치 → VS Code Claude Code 확장에 포함된 바이너리 순으로 탐색) 어떤 계정으로 동작하는지 설정 화면에 표시됩니다.
-  - **Ollama / OpenAI 호환**: 기본 주소 `http://127.0.0.1:11434/v1`. 모델을 지정하지 않으면 서버의 첫 모델을 씁니다. API 키는 OS 보안 저장소(Electron `safeStorage`)에 암호화해 저장하며, 보안 저장소를 쓸 수 없으면 저장하지 않습니다. (대화 전용, 도구 없음)
-- **권한**(Claude Code 도구 사용):
+- **트레이 아이콘**: 왼쪽 클릭은 펫 숨기기/보이기, 오른쪽 클릭은 메뉴(연결별 켜기/끄기, 설정, 종료). 펫을 우클릭해도 같은 메뉴가 나옵니다.
+- **연결 = 캐릭터**: AI 계정/서버 하나를 "연결"로 등록하면 연결마다 펫이 한 마리씩 화면에 뜹니다(최대 8). 연결마다 **스킨·말투·계정/키가 따로**이고, 대화창도 펫마다 따로 여러 개를 동시에 열 수 있습니다. 설정에서 추가/삭제/켜기·끄기 하면 바로 반영됩니다.
+- **설정**(메뉴 → 설정…, 탭: 연결 / 말투 / 펫 / 알림 / 일반): 연결 목록(종류, 이름, 스킨, 말투, 경로/주소/모델/API 키, 도구 사용), 작업 폴더, 알림음, 로그인 시 자동 시작. 값은 바꾸는 즉시 저장되고 재시작해도 유지됩니다 (`%APPDATA%/aipet/settings.json`). 예전 형식의 설정은 자동으로 변환됩니다.
+- 연결 종류 (같은 종류를 여러 개 만들 수 있습니다):
+  - **Claude Code**: 공식 `claude` CLI를 설치하고 터미널에서 한 번 로그인해 두면 자동으로 감지합니다. (설정에서 지정한 경로 → PATH → 공식 설치 위치 → VS Code Claude Code 확장에 포함된 바이너리 순으로 탐색) 어떤 계정인지 설정 화면에 표시됩니다. **계정을 여러 개** 쓰려면 연결마다 "계정 설정 폴더"를 다르게 지정하세요(`CLAUDE_CONFIG_DIR`로 전달됨). "자동 지정"으로 폴더를 만들고, "로그인 명령 복사"로 받은 명령을 터미널에 붙여 그 계정으로 로그인하면 됩니다. 파일/명령 도구와 권한 승인 카드를 지원하는 유일한 종류입니다.
+  - **Codex CLI**, **Gemini CLI**: 각 공식 CLI를 설치·로그인해 두면 쓸 수 있습니다. **읽기 전용**(Codex `-s read-only`, Gemini `--approval-mode plan`)이라 파일을 고치거나 명령을 실행하지 않습니다. 대화 기록은 앱이 매번 프롬프트에 이어 붙입니다.
+  - **Anthropic API**: 공식 SDK(`@anthropic-ai/sdk`)로 스트리밍 대화. API 키 + 모델(기본 `claude-opus-5-5`)을 입력합니다. 대화 전용.
+  - **Ollama / OpenAI 호환**: 기본 주소 `http://127.0.0.1:11434/v1`. 모델을 지정하지 않으면 서버의 첫 모델을 씁니다. 대화 전용.
+  - API 키는 연결마다 OS 보안 저장소(Electron `safeStorage`)에 암호화해 저장하며, 보안 저장소를 쓸 수 없으면 저장하지 않습니다.
+- **권한**(Claude Code 연결의 도구 사용):
   - 에이전트는 설정한 **작업 폴더** 안에서만 일합니다 (기본: 앱 전용 폴더). 폴더 밖 경로는 묻지 않고 거부합니다.
   - 읽기 전용 도구(Read/Glob/Grep 등)는 자동 허용(설정에서 끌 수 있음). 파일 쓰기, 명령 실행, 네트워크는 **말풍선의 승인 카드**에서 허용/거부합니다.
   - 승인 요청이 오면 펫이 놀란 표정을 짓고 알림음이 납니다. 다른 앱을 쓰는 중이어도 포커스를 가져가지 않습니다.
-- 환경변수(설정에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `AIPET_BACKEND`(`claude-code`|`openai-compat`)
-- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`
+- 환경변수(연결에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `ANTHROPIC_API_KEY`
+- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`, `AIPET_SKIN`(모든 연결에 한 스킨을 강제)
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
 
 ## 행동과 먼저 말 걸기
@@ -46,14 +50,14 @@ npm run lint
 ## 말투
 
 - 펫의 말투/성격은 **텍스트 파일 하나 = 말투 하나**로 `%APPDATA%/aipet/personas/`(설정 창에 경로 표시)에 저장됩니다. 처음 실행하면 저장소의 [personas/](personas/) 폴더(기본, 친구 (반말), 비서 (존댓말), 현장냥이, 한 줄 요약)를 복사해 채웁니다.
-- 선택/수정/새로 만들기/삭제는 설정 창의 "말투" 영역에서, 선택만 바꾸는 건 트레이·펫 우클릭 메뉴의 "말투"에서 할 수 있습니다. 파일을 직접 편집하거나 `.txt`를 폴더에 넣어도 목록에 나타납니다.
+- 말투 파일의 수정/새로 만들기/삭제는 설정 창의 "말투" 탭에서, **어떤 연결이 어떤 말투를 쓸지**는 각 연결 카드(또는 펫 우클릭 메뉴)에서 고릅니다. 파일을 직접 편집하거나 `.txt`를 폴더에 넣어도 목록에 나타납니다.
 - 시스템 프롬프트 = 말투 파일 내용 + 앱이 붙이는 도구 사용 안내(도구 가능/불가, 승인 규칙). 다음 메시지부터 적용되며, Claude Code는 말투를 바꾸면 새 대화로 시작합니다 (CLI가 처음 보낸 프롬프트를 세션에 기록하기 때문).
 
 ## 스킨
 
-- `skins/<이름>/skin.json` + 상태별 PNG 시트. 설정 창의 "펫 스킨"에서 고릅니다 (바꾸면 앱이 다시 시작됩니다). 형식은 [skins/skin.schema.json](skins/skin.schema.json).
+- `skins/<이름>/skin.json` + 상태별 PNG 시트. 각 연결 카드의 "스킨"에서 고릅니다. 형식은 [skins/skin.schema.json](skins/skin.schema.json).
 - `default`: 임시 콩 캐릭터 (`node tools/gen-placeholder-skin.mjs`로 생성).
-- `genba-cat`: 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
+- `genba-cat`: **개인용이며 저장소에 포함되지 않습니다**(`.gitignore`, 커밋 기록에서도 제거). 직접 쓰려면 `skins/genba-cat/source.webp`에 원본 이미지를 두고 `tools/genba`로 만듭니다. 패키징/배포 때도 제외해야 합니다. 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
   - 배경을 지우고, 몸을 격자 메시로 덮어 관절(머리, 팔, 다리, 꼬리, 입, 눈)만 휘게 해서 idle/walk/drag/drop/sleep/think/work/talk/done/error/attention 시트를 만듭니다. 새 포즈를 그린 것이 아니라 한 장을 변형한 것이라 움직임은 단순합니다.
   - 완료(done) 모션에서는 원본에 있던 "ヨシ!" 글자를 외칩니다.
   - 다시 만들려면 `npx electron tools/genba/build.cjs` (움직임 조정은 `tools/genba/page.js`). 더 나은 시트(직접 그리거나 생성한 그림)가 생기면 같은 파일명의 PNG로 교체하면 됩니다.

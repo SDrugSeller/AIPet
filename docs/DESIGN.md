@@ -72,11 +72,12 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 | 종류 | 대상 | 인증 | 도구 실행 주체 |
 |---|---|---|---|
 | **CLI 어댑터** | Claude Code, Codex CLI, Gemini CLI 등 | 사용자가 공식 CLI에 직접 로그인(구독 사용 가능). 앱은 토큰을 보지 않음 | CLI |
-| **API 어댑터** | Anthropic, OpenAI | 사용자 API 키 (`safeStorage`) | 앱(도구 루프 직접 구현) |
+| **API 어댑터** | Anthropic (구현: 대화 전용), OpenAI (미구현) | 사용자 API 키 (`safeStorage`) | 없음 (도구 루프는 미구현) |
 | **OpenAI 호환 어댑터** | Ollama, LM Studio, OpenRouter, Gemini 호환 엔드포인트 등 | base URL + (선택) 키 | 앱 |
 
 - **CLI 어댑터 구현 방식**: 공식 CLI를 서브프로세스로 실행해 JSON 스트림을 파싱한다. **ACP(Agent Client Protocol)** 등 표준 프로토콜을 CLI가 지원하면 이를 우선 사용해 어댑터 하나로 여러 CLI를 처리한다 (지원 범위는 구현 시점에 검증).
-- **MVP 범위**: CLI 어댑터 1종(Claude Code) + OpenAI 호환 어댑터(Ollama로 로컬 테스트 가능). 이후 Codex/Gemini CLI, Anthropic/OpenAI API 순으로 추가.
+- **구현 현황**: Claude Code(도구+권한), Codex CLI·Gemini CLI(읽기 전용, 대화 기록은 앱이 이어 붙임), Anthropic API(공식 SDK 스트리밍; Opus/Fable/Sonnet 5.5는 서버 측 fallbacks 베타 사용, 안전 거절 처리), OpenAI 호환(Ollama 등). 외부 서버/계정과의 실제 통신은 가짜 서버·CLI 출력 기반 테스트로만 검증했다.
+- **다중 연결**: 연결(`connections[]`: id, name, kind, enabled, skin, persona, options)이 곧 캐릭터다. 연결마다 `AgentHost`+어댑터가 하나씩 만들어지고, 펫 엔진·말풍선·권한 카드도 연결(petId)별로 분리된다. 같은 종류를 여러 개 둘 수 있으며(최대 8) Claude Code는 연결마다 `CLAUDE_CONFIG_DIR`를 달리해 계정을 나눈다. API 키는 `key:<id>`로 연결마다 `safeStorage`에 저장한다. 설정 변경은 `syncPets`가 실행 중인 펫을 추가/제거/갱신한다.
 - **첫 실행 흐름**: 어댑터별 `detect()`로 사용 가능한 백엔드를 자동 탐지 → 설정 화면에서 선택. CLI 미설치/미로그인 시 설치·로그인 안내만 표시한다.
 - **공통 최소 기능**: 텍스트 대화, 스트리밍, 중단, 상태 이벤트. 파일/도구 기능은 어댑터별 선택 지원(capability 플래그로 노출).
 
@@ -190,8 +191,8 @@ AIPet/
  ├─ docs/DESIGN.md
  ├─ src/
  │   ├─ main/        (index.js, windows.js, petEngine.js, skin.js, store.js, config.js, menu.js, tray.js, settingsWindow.js)
- │   ├─ main/agent/  (adapter.js, agentHost.js, permissions.js, claudeCodeAdapter.js, openaiCompatAdapter.js, [apiAdapter.js: M6])
- │   ├─ shared/      (motion.js: main/renderer 공용 이동 공식)
+ │   ├─ main/agent/  (adapter.js, agentHost.js, permissions.js, factory.js, cli.js, claudeCodeAdapter.js, codexCliAdapter.js, geminiCliAdapter.js, anthropicApiAdapter.js, openaiCompatAdapter.js)
+ │   ├─ shared/      (motion.js: main/renderer 공용 이동 공식, connections.js: 연결 종류/검증)
  │   ├─ preload/     (preload.cjs, settingsPreload.cjs)
  │   ├─ renderer/    (index.html, main.js, chat.js, style.css)  오버레이
  │   └─ settings/    (index.html, settings.js, settings.css)  설정 창
@@ -210,7 +211,8 @@ AIPet/
 | M3 | 말풍선 입력 + 어댑터 인터페이스 + Claude Code CLI·Ollama 어댑터 | 대화 가능, status→모션 매핑, detect() 동작 |
 | M4 | 트레이, 설정, 권한 승인 UI, 저장소 | 재시작 후 설정 유지 |
 | M5 | 활성 창 인식, 창 위 걸터앉기, 자발적 발화 | 쿨다운/방해금지 동작 |
-| M6 | Codex/Gemini CLI·API 어댑터, 스킨 교체, 패키징 | 설치 파일 생성 |
+| M5.5 | 다중 연결(연결마다 펫·스킨·말투·계정), Codex/Gemini CLI·Anthropic API 어댑터 | 완료 |
+| M6 | 패키징 (개인용 스킨 제외) | 설치 파일 생성 |
 
 ## 10. 리스크 / 미결 사항
 

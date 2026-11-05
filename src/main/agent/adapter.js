@@ -33,6 +33,10 @@ export const DEFAULT_PERSONA =
   '너는 사용자의 데스크톱 화면에 사는 작고 친근한 펫이야. 한두 문장으로 짧고 따뜻하게, 대화하듯 답해. 사용자가 쓰는 언어로 답해.';
 
 const TOOLS_OFF = 'You currently cannot use tools or access files, so do not offer to.';
+const TOOLS_READONLY = [
+  'You may read files inside the allowed work folder, but you cannot modify files or run risky commands,',
+  'so do not offer to. Keep answers short.',
+].join(' ');
 const TOOLS_ON = [
   'You can read and edit files and run commands, but only inside the allowed work folder,',
   'and the user must approve risky actions first. If an action is denied, accept it and do not try to work around it.',
@@ -41,12 +45,12 @@ const TOOLS_ON = [
 /**
  * 시스템 프롬프트 = 사용자가 고른 말투 + 앱이 정하는 도구 사용 안내.
  * (말투는 설정의 말투 파일에서 오므로 사용자가 자유롭게 바꿀 수 있다.)
- * @param {string | undefined} persona @param {boolean} tools
+ * @param {string | undefined} persona
+ * @param {boolean | 'readonly'} tools  false: 도구 없음(대화 전용) / 'readonly': 읽기만 가능 / true: 쓰기·실행도 가능(승인 후)
  */
 export function buildSystemPrompt(persona, tools) {
-  return `${(persona || '').trim() || DEFAULT_PERSONA}
-
-${tools ? TOOLS_ON : TOOLS_OFF}`;
+  const tail = tools === 'readonly' ? TOOLS_READONLY : tools ? TOOLS_ON : TOOLS_OFF;
+  return `${(persona || '').trim() || DEFAULT_PERSONA}\n\n${tail}`;
 }
 
 /**

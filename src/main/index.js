@@ -4,9 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfig } from './config.js';
 import { buildMenuTemplate } from './menu.js';
+import { createPersonaStore } from './personas.js';
 import { createSettingsWindow } from './settingsWindow.js';
 import { loadSkin, registerSkinProtocol, SKIN_SCHEME } from './skin.js';
-import { createPersonaStore } from './personas.js';
 import { createStore } from './store.js';
 import { createTray } from './tray.js';
 import { createOverlayManager } from './windows.js';
@@ -35,42 +35,39 @@ if (!app.requestSingleInstanceLock()) {
     });
     const config = createConfig({ store, personas, userDataDir: userData });
 
-    // 스킨: AIPET_SKIN > 설정. 불러오지 못하면 기본 스킨으로 시작한다.
-    const wantedSkin = process.env.AIPET_SKIN || store.get().general.skin;
-    /** @type {Awaited<ReturnType<typeof loadSkin>>} */
-    let skin;
-    try {
-      skin = await loadSkin(wantedSkin, store.get().skinTuning[wantedSkin]);
-    } catch (e) {
-      console.error(`스킨 '${wantedSkin}'을 불러오지 못해 기본 스킨을 씁니다:`, /** @type {Error} */ (e).message);
-      skin = await loadSkin('default');
-    }
-
     /** @type {ReturnType<typeof createOverlayManager>} */
     let manager;
     /** @type {ReturnType<typeof createSettingsWindow>} */
     let settings;
 
     // 트레이와 펫 우클릭이 같은 메뉴를 쓴다. manager/settings는 아래에서 만들어진 뒤에 호출된다.
-    const getMenuTemplate = () =>
+    /** @param {string} [petId] */
+    const getMenuTemplate = (petId) =>
       buildMenuTemplate({
-        host: manager.host,
+        petId,
         isVisible: manager.isVisible,
         setVisible: manager.setVisible,
-        openSettings: () => settings.open(),
         isDnd: () => store.get().general.doNotDisturb,
         setDnd: (v) => store.update({ general: { doNotDisturb: v } }),
-        listPersonas: () => personas.list().map((p) => ({ ...p, selected: p.id === store.get().persona.selected })),
-        selectPersona: (id) => store.update({ persona: { selected: id } }),
+        connections: () => store.get().connections,
+        statuses: manager.statuses,
+        setConnectionEnabled: (id, enabled) =>
+          store.update({ connections: store.get().connections.map((c) => (c.id === id ? { ...c, enabled } : c)) }),
+        listPersonas: () => personas.list(),
+        selectPersona: (connectionId, personaId) =>
+          store.update({ connections: store.get().connections.map((c) => (c.id === connectionId ? { ...c, persona: personaId } : c)) }),
+        openSettings: (tab) => settings.open(tab),
+        refreshAll: manager.refreshAll,
       });
 
     manager = createOverlayManager({
-      skin,
       preloadPath: path.join(here, '../preload/preload.cjs'),
       rendererPath: path.join(here, '../renderer/index.html'),
       debug: process.env.AIPET_DEBUG === '1',
       store,
       config,
+      // AIPET_SKIN을 주면 모든 연결이 그 스킨을 쓴다 (디버그/검증용)
+      loadSkin: (name, tuning) => loadSkin(process.env.AIPET_SKIN || name, tuning),
       getMenuTemplate,
     });
 
@@ -78,37 +75,39 @@ if (!app.requestSingleInstanceLock()) {
       store,
       config,
       personas,
-      host: manager.host,
+      manager,
+      userDataDir: userData,
       preloadPath: path.join(here, '../preload/settingsPreload.cjs'),
       htmlPath: path.join(here, '../settings/index.html'),
       packaged: app.isPackaged,
     });
 
+    // 트레이 아이콘은 첫 번째 연결의 스킨으로 만든다. 불러오지 못하면 기본 스킨을 쓴다.
+    const first = store.get().connections.find((c) => c.enabled) ?? store.get().connections[0];
+    /** @type {Awaited<ReturnType<typeof loadSkin>>} */
+    let iconSkin;
+    try {
+      iconSkin = await loadSkin(first?.skin ?? 'default', store.get().skinTuning[first?.skin ?? 'default']);
+    } catch {
+      iconSkin = await loadSkin('default');
+    }
     createTray({
-      iconPath: path.resolve(here, '../../skins', skin.name, skin.animations.idle.sheet),
-      frameSize: skin.frameSize,
-      hitbox: skin.hitbox,
-      getMenuTemplate,
+      iconPath: path.resolve(here, '../../skins', iconSkin.name, iconSkin.animations.idle.sheet),
+      frameSize: iconSkin.frameSize,
+      hitbox: iconSkin.hitbox,
+      getMenuTemplate: () => getMenuTemplate(),
       onToggle: () => manager.setVisible(!manager.isVisible()),
     });
 
     // 설정이 바뀔 때마다: 로그인 시 자동 시작 반영, 열려 있는 설정 창 갱신
-    let skinSetting = store.get().general.skin;
-    let tuningSetting = JSON.stringify(store.get().skinTuning[skinSetting] ?? null);
     store.onChange((s) => {
-      // 스킨과 크기 조정값은 시작할 때 한 번 읽으므로, 사용자가 바꾸면 앱을 다시 시작해 적용한다.
-      const tuning = JSON.stringify(s.skinTuning[s.general.skin] ?? null);
-      if (s.general.skin !== skinSetting || tuning !== tuningSetting) {
-        skinSetting = s.general.skin;
-        tuningSetting = tuning;
-        app.relaunch();
-        app.exit(0);
-        return;
-      }
       // 개발 중(electron.exe 직접 실행)에는 시작 프로그램에 등록하지 않는다.
       if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.launchAtLogin });
       settings.pushState();
     });
+    manager.onStatus(() => settings.pushState());
+
+    await manager.start();
 
     // 디버그용: 설정 창을 열고 렌더링 결과를 PNG로 저장 (AIPET_OPEN_SETTINGS=1, AIPET_CAPTURE_DIR)
     if (process.env.AIPET_DEBUG === '1' && process.env.AIPET_OPEN_SETTINGS === '1') {
