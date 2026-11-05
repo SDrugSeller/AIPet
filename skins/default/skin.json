@@ -15,6 +15,7 @@
     "walk":      { "sheet": "walk.png",      "frames": 8, "fps": 10, "loop": true, "moveSpeed": 60 },
     "drag":      { "sheet": "drag.png",      "frames": 3, "fps": 6,  "loop": true },
     "drop":      { "sheet": "drop.png",      "frames": 4, "fps": 10, "loop": false, "next": "idle" },
+    "sleep":     { "sheet": "sleep.png",     "frames": 4, "fps": 3,  "loop": true },
     "think":     { "sheet": "think.png",     "frames": 6, "fps": 6,  "loop": true },
     "work":      { "sheet": "work.png",      "frames": 8, "fps": 10, "loop": true },
     "talk":      { "sheet": "talk.png",      "frames": 4, "fps": 8,  "loop": true },
@@ -31,6 +32,7 @@
     "error": "think",
     "react": "done",
     "drop": "idle",
+    "fall": "drag",
     "run": "walk",
     "sit": "idle",
     "sleep": "idle"

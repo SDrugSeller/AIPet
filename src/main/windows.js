@@ -1,22 +1,43 @@
 // @ts-check
 import { BrowserWindow, Menu, app, ipcMain, screen } from 'electron';
+import { createPetEngine } from './petEngine.js';
 
 /**
- * 모니터마다 투명 오버레이 창을 하나씩 만들고, 펫 좌표(가상 데스크톱 기준, DIP)는
- * 여기서 단일 상태로 관리해 모든 창에 브로드캐스트한다.
- * 펫이 모니터 경계에 걸치면 양쪽 창이 각자 자기 영역만 그린다.
+ * 모니터마다 투명 오버레이 창을 하나씩 만든다.
+ * 펫은 항상 한 모니터에만 속하고 그 모니터의 창에서만 그려진다
+ * (배율이 다른 모니터 사이의 DIP 좌표는 경계에서 끊어지므로 경계에 걸쳐 그리지 않는다).
+ * 펫의 행동/위치는 petEngine이 관리하고, 여기서는 창과 IPC, 드래그 입력을 맡는다.
  *
  * @param {{ skin: any, preloadPath: string, rendererPath: string, debug: boolean }} opts
  */
 export function createOverlayManager({ skin, preloadPath, rendererPath, debug }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
-  // 펫은 항상 한 모니터(display)에만 속하고, 그 모니터의 창에서만 그려진다.
-  // 배율이 다른 모니터 사이의 DIP 좌표는 경계에서 끊어지므로, 경계에 걸쳐 그리지 않는다.
-  const pet = { x: 0, y: 0, dragging: false, display: 0 };
   const headroom = skin.anchor.y * skin.scale;
   const halfLeft = skin.anchor.x * skin.scale;
   const halfRight = (skin.frameSize.w - skin.anchor.x) * skin.scale;
+
+  const sleepSec = Number(process.env.AIPET_SLEEP_AFTER_SEC);
+  const engine = createPetEngine({
+    skin,
+    area: areaOf,
+    emit: broadcast,
+    sleepAfterMs: (debug && sleepSec > 0 ? sleepSec : 60) * 1000,
+  });
+  const pet = engine.pet;
+
+  /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 */
+  /** @param {number} displayId */
+  function areaOf(displayId) {
+    const d = screen.getAllDisplays().find((x) => x.id === displayId);
+    if (!d) return null;
+    const wa = d.workArea;
+    return {
+      left: wa.x + halfLeft,
+      right: Math.max(wa.x + halfLeft, wa.x + wa.width - halfRight),
+      ground: wa.y + wa.height,
+    };
+  }
 
   /** @param {Electron.WebContents} sender */
   function findDisplayId(sender) {
@@ -43,7 +64,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     if (!sameRect(win.getBounds(), bounds)) win.setBounds(bounds);
   }
 
-  /** 펫(발 위치 기준)을 자기 모니터 안에 완전히 들어오도록 제한한다. 모니터가 사라졌으면 가까운 모니터로 옮긴다. */
+  /** 펫(발 위치 기준)을 자기 모니터 안으로 제한한다. 모니터가 사라졌으면 가까운 모니터로 옮긴다. */
   function clampPet() {
     const d =
       screen.getAllDisplays().find((x) => x.id === pet.display) ??
@@ -55,6 +76,9 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
   }
 
   function broadcast() {
+    if (debug && !pet.dragging) {
+      console.log('[pet]', pet.anim, pet.facing, `display=${pet.display}`, `x=${Math.round(pet.x)}`, `y=${Math.round(pet.y)}`, pet.move ? JSON.stringify(pet.move) : '');
+    }
     for (const win of windows.values()) {
       if (!win.isDestroyed()) win.webContents.send('pet:state', { ...pet });
     }
@@ -80,6 +104,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false, // 가려진 창으로 판단돼도 애니메이션이 멈추지 않게
       },
     });
 
@@ -96,13 +121,14 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
       win.webContents.on('did-fail-load', (_e, code, desc) => console.log(`[load fail ${display.id}]`, code, desc));
       // AIPET_CAPTURE_DIR 지정 시 3초 뒤 각 창의 렌더링 결과를 PNG로 저장 (검증용)
       if (process.env.AIPET_CAPTURE_DIR) {
-        win.once('show', () => setTimeout(async () => {
-          const img = await win.webContents.capturePage();
-          const { writeFile } = await import('node:fs/promises');
-          await writeFile(`${process.env.AIPET_CAPTURE_DIR}/window-${display.id}.png`, img.toPNG());
-        }, 3000));
+        win.once('show', () =>
+          setTimeout(async () => {
+            const img = await win.webContents.capturePage();
+            const { writeFile } = await import('node:fs/promises');
+            await writeFile(`${process.env.AIPET_CAPTURE_DIR}/window-${display.id}.png`, img.toPNG());
+          }, 3000),
+        );
       }
-      win.once('show', () => console.log(`[window ${display.id}] bounds`, JSON.stringify(win.getBounds()), 'display', JSON.stringify(display.bounds)));
     }
     win.loadFile(rendererPath);
 
@@ -130,7 +156,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
       }
     }
     clampPet();
-    broadcast();
+    engine.relayout(); // 바닥에 다시 세우고 broadcast
   }
 
   // --- IPC (화이트리스트 채널만, 보낸 쪽이 우리 오버레이 창인지 확인) ---
@@ -151,7 +177,6 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
   // 드래그 중 좌표는 렌더러의 clientX/Y 대신 main의 커서 좌표를 쓴다.
   // 드래그를 시작한 창이 포인터를 계속 잡고 있는데, 그 창은 다른 모니터의 배율을 몰라
   // 배율이 다른 모니터로 넘어가면 clientX/Y가 어긋난다. getCursorScreenPoint는 모니터별 배율이 반영된 DIP 좌표다.
-  // 포인터 이벤트는 모니터 경계를 넘는 순간 잠깐 끊길 수 있어, 드래그 중에는 이벤트 대신 타이머로 커서를 읽는다.
   /** @type {{ dx: number, dy: number } | null} */
   let grab = null;
   /** @type {NodeJS.Timeout | null} */
@@ -160,10 +185,9 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
   function followCursor() {
     if (!grab) return;
     const c = screen.getCursorScreenPoint();
+    const before = { x: pet.x, y: pet.y, display: pet.display };
     // 펫은 커서가 있는 모니터로 옮겨 간다 (커서와 같은 모니터 좌표계에서 계산).
-    const display = screen.getDisplayNearestPoint(c).id;
-    const before = { ...pet };
-    pet.display = display;
+    pet.display = screen.getDisplayNearestPoint(c).id;
     pet.x = c.x + grab.dx;
     pet.y = c.y + grab.dy;
     clampPet();
@@ -171,7 +195,7 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
     broadcast();
   }
 
-  function stopDrag() {
+  function stopDragTimer() {
     if (dragTimer) clearInterval(dragTimer);
     dragTimer = null;
     grab = null;
@@ -179,14 +203,16 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
 
   ipcMain.on('pet:dragging', (e, dragging) => {
     if (findDisplayId(e.sender) === null || typeof dragging !== 'boolean') return;
-    stopDrag();
-    pet.dragging = dragging;
+    stopDragTimer();
     if (dragging) {
+      engine.startDrag();
       const c = screen.getCursorScreenPoint();
       grab = { dx: pet.x - c.x, dy: pet.y - c.y };
+      // 포인터 이벤트는 모니터 경계를 넘는 순간 끊길 수 있어, 이벤트 대신 타이머로 커서를 읽는다.
       dragTimer = setInterval(followCursor, 8);
+    } else {
+      engine.endDrag();
     }
-    broadcast();
   });
 
   ipcMain.on('pet:menu', (e) => {
@@ -205,13 +231,11 @@ export function createOverlayManager({ skin, preloadPath, rendererPath, debug })
       ? screen.getAllDisplays()[startIdx]
       : screen.getPrimaryDisplay();
   const wa = startDisplay.workArea;
-  pet.display = startDisplay.id;
-  pet.x = wa.x + wa.width / 2;
-  pet.y = wa.y + wa.height; // 작업표시줄 바로 위
 
   screen.on('display-added', syncDisplays);
   screen.on('display-removed', syncDisplays);
   screen.on('display-metrics-changed', syncDisplays);
 
+  engine.start(startDisplay.id, wa.x + wa.width / 2);
   syncDisplays();
 }

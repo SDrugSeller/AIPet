@@ -5,7 +5,7 @@ export default [
   { ignores: ['node_modules/', 'dist/', 'out/'] },
   js.configs.recommended,
   {
-    files: ['src/main/**/*.js', 'eslint.config.js'],
+    files: ['src/main/**/*.js', 'src/shared/**/*.js', 'tools/**/*.mjs', 'eslint.config.js'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.node },
   },
   {
