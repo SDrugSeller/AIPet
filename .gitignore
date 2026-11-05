@@ -2,3 +2,6 @@ node_modules/
 dist/
 out/
 *.log
+
+# 개인용 스킨: 원본 이미지(웹 밈 캐릭터)의 권리가 원작자에게 있어 저장소/배포에 포함하지 않는다.
+skins/genba-cat/
