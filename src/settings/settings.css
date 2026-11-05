@@ -175,6 +175,16 @@ input[type='time'] {
   border-radius: 8px;
 }
 
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.grid3 input[type='number'] {
+  width: 100%;
+}
+
 .reminder {
   display: flex;
   align-items: center;

@@ -40,7 +40,7 @@ if (!app.requestSingleInstanceLock()) {
     /** @type {Awaited<ReturnType<typeof loadSkin>>} */
     let skin;
     try {
-      skin = await loadSkin(wantedSkin);
+      skin = await loadSkin(wantedSkin, store.get().skinTuning[wantedSkin]);
     } catch (e) {
       console.error(`스킨 '${wantedSkin}'을 불러오지 못해 기본 스킨을 씁니다:`, /** @type {Error} */ (e).message);
       skin = await loadSkin('default');
@@ -94,10 +94,13 @@ if (!app.requestSingleInstanceLock()) {
 
     // 설정이 바뀔 때마다: 로그인 시 자동 시작 반영, 열려 있는 설정 창 갱신
     let skinSetting = store.get().general.skin;
+    let tuningSetting = JSON.stringify(store.get().skinTuning[skinSetting] ?? null);
     store.onChange((s) => {
-      // 스킨은 시작할 때 한 번 읽으므로, 사용자가 바꾸면 앱을 다시 시작해 적용한다.
-      if (s.general.skin !== skinSetting) {
+      // 스킨과 크기 조정값은 시작할 때 한 번 읽으므로, 사용자가 바꾸면 앱을 다시 시작해 적용한다.
+      const tuning = JSON.stringify(s.skinTuning[s.general.skin] ?? null);
+      if (s.general.skin !== skinSetting || tuning !== tuningSetting) {
         skinSetting = s.general.skin;
+        tuningSetting = tuning;
         app.relaunch();
         app.exit(0);
         return;

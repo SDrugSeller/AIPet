@@ -97,3 +97,9 @@ test('시스템 프롬프트 = 말투 + 도구 안내. 말투가 비어 있으�
   assert.ok(buildSystemPrompt('', false).startsWith(DEFAULT_PERSONA));
   assert.ok(buildSystemPrompt(undefined, true).startsWith(DEFAULT_PERSONA));
 });
+
+test('BOM이 붙은 말투 파일(메모장으로 저장)은 BOM을 떼고 읽는다', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, '메모장.txt'), '\uFEFF말끝에 냥을 붙여', 'utf8');
+  assert.equal(createPersonaStore({ dir }).read('메모장.txt'), '말끝에 냥을 붙여');
+});

@@ -1,6 +1,8 @@
 // @ts-check
 // 설정 창. 값이 바뀔 때마다 자동 저장한다. 화면에 표시되는 문자열은 모두 textContent/value로만 넣는다.
 
+import { applyTuning, checkSheets, detectFrameSize } from '../shared/skinTuning.js';
+
 /** @type {any} */
 const api = /** @type {any} */ (window).aipetSettings;
 
@@ -95,6 +97,7 @@ function render() {
   $('#personaDir').textContent = `저장 위치: ${pr.dir}`;
 
   renderReminders();
+  renderTuning();
 
   // 먼저 말 걸기를 끄면 하위 항목을 회색으로 비활성화한다
   const spOn = !!s.spontaneous.enabled;
@@ -122,6 +125,97 @@ function render() {
     /** @type {HTMLInputElement} */ ($(`input[name="backend"][value="${b.id}"]`)).checked = b.selected;
   }
 }
+
+// --- 스킨 크기 ---
+
+const tuneFields = () => ({
+  fw: /** @type {HTMLInputElement} */ ($('#tuneFW')),
+  fh: /** @type {HTMLInputElement} */ ($('#tuneFH')),
+  dh: /** @type {HTMLInputElement} */ ($('#tuneDH')),
+});
+
+/** 입력칸의 값을 숫자로 읽는다 (비었거나 숫자가 아니면 undefined) @param {HTMLInputElement} el */
+const numOf = (el) => (el.value !== '' && Number.isFinite(Number(el.value)) ? Math.round(Number(el.value)) : undefined);
+
+/** 입력한 값으로 환산 결과와 시트 문제를 보여 준다 */
+function previewTuning() {
+  const info = state.skinTuning;
+  if (!info) return;
+  const { fw, fh, dh } = tuneFields();
+  const t = { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) };
+  const r = applyTuning(info.authored, t);
+  $('#tuneResult').textContent =
+    `결과: 화면에 ${r.displaySize.w}×${r.displaySize.h}px로 보여요 (배율 ${r.scale}) · 발 위치 (${r.anchor.x}, ${r.anchor.y}) · ` +
+    `클릭 영역 x${r.hitbox.x} y${r.hitbox.y} ${r.hitbox.w}×${r.hitbox.h}`;
+  const problems = checkSheets(r.frameSize, info.sheets);
+  $('#tuneProblems').textContent = problems.length
+    ? `시트 크기가 입력한 프레임 크기와 맞지 않아요:\n${problems.slice(0, 6).join('\n')}${problems.length > 6 ? `\n… 외 ${problems.length - 6}건` : ''}`
+    : '';
+}
+
+function renderTuning() {
+  const info = state.skinTuning;
+  $('#tuneSection').hidden = !info;
+  if (!info) return;
+  const a = info.authored;
+  const cur = info.current ?? {};
+  $('#tuneInfo').textContent =
+    `현재 스킨: ${info.id} · 원본 설정: 프레임 ${a.frameSize.w}×${a.frameSize.h}px, 화면 높이 ${Math.round(a.frameSize.h * a.scale)}px${info.current ? ' (조정됨)' : ''}`;
+  const { fw, fh, dh } = tuneFields();
+  const editing = [fw, fh, dh].includes(/** @type {any} */ (document.activeElement));
+  if (!editing) {
+    fw.value = String(cur.frameW ?? a.frameSize.w);
+    fh.value = String(cur.frameH ?? a.frameSize.h);
+    dh.value = String(cur.displayH ?? Math.round(a.frameSize.h * a.scale));
+  }
+  previewTuning();
+}
+
+for (const el of Object.values(tuneFields())) el.addEventListener('input', previewTuning);
+
+$('#tuneDetect').addEventListener('click', () => {
+  const info = state.skinTuning;
+  if (!info) return;
+  // idle 시트를 우선하고, 없으면 있는 시트 중 첫 번째로 감지한다.
+  const sheet = info.sheets.find((/** @type {any} */ s) => s.anim === 'idle') ?? info.sheets[0];
+  const found = sheet && detectFrameSize(sheet);
+  if (!found) {
+    flashSaved('시트에서 프레임 크기를 알아내지 못했어요 (너비가 프레임 수로 나누어떨어지지 않아요)');
+    return;
+  }
+  const { fw, fh, dh } = tuneFields();
+  const a = info.authored;
+  // 표시 높이는 건드리지 않는다. 해상도만 다르면 화면 크기는 그대로 유지된다.
+  fw.value = String(found.w);
+  fh.value = String(found.h);
+  if (numOf(dh) === undefined) dh.value = String(Math.round(a.frameSize.h * a.scale));
+  previewTuning();
+  flashSaved(`${sheet.anim}.png에서 프레임 ${found.w}×${found.h}px를 감지했어요. 적용을 눌러 반영하세요`);
+});
+
+$('#tuneApply').addEventListener('click', async () => {
+  const info = state.skinTuning;
+  if (!info) return;
+  const { fw, fh, dh } = tuneFields();
+  const t = { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) };
+  if (t.frameW === undefined || t.frameH === undefined || t.displayH === undefined) {
+    flashSaved('세 칸을 모두 숫자로 입력해 주세요');
+    return;
+  }
+  if (checkSheets({ w: t.frameW, h: t.frameH }, info.sheets).length && !window.confirm('시트 크기와 맞지 않아 그림이 깨져 보일 수 있어요. 그래도 적용할까요?')) return;
+  const next = { ...state.settings.skinTuning, [info.id]: t };
+  savedEl.textContent = '적용하는 중… 앱이 다시 시작돼요';
+  await save({ skinTuning: next });
+});
+
+$('#tuneReset').addEventListener('click', async () => {
+  const info = state.skinTuning;
+  if (!info || !info.current) return;
+  const next = { ...state.settings.skinTuning };
+  delete next[info.id];
+  savedEl.textContent = '원래대로 되돌리는 중… 앱이 다시 시작돼요';
+  await save({ skinTuning: next });
+});
 
 // --- 정해진 시각 알림 ---
 

@@ -58,6 +58,8 @@ export const DEFAULTS = {
     /** 정해진 시각의 알림 */
     reminders: /** @type {{ time: string, text: string, enabled: boolean }[]} */ ([]),
   },
+  /** 스킨별 크기 조정값 (스킨 폴더 이름 → 프레임 크기/표시 높이). 비어 있으면 skin.json 그대로 */
+  skinTuning: /** @type {Record<string, { frameW?: number, frameH?: number, displayH?: number }>} */ ({}),
   general: {
     /** 펫 스킨 폴더 이름 (바꾸면 앱이 다시 시작된다) */
     skin: 'default',
@@ -105,6 +107,21 @@ const reminders = (v) =>
       typeof r.enabled === 'boolean',
   );
 
+/** 스킨별 크기 조정값: 최대 20개 스킨, 각 값은 범위 안의 정수만 허용 @param {unknown} v */
+const skinTuning = (v) =>
+  isObject(v) &&
+  Object.keys(v).length <= 20 &&
+  Object.entries(v).every(
+    ([id, t]) =>
+      /^[A-Za-z0-9_-]{1,64}$/.test(id) &&
+      isObject(t) &&
+      Object.entries(t).every(([k, n]) => {
+        if (k === 'frameW' || k === 'frameH') return int(8, 2048)(n);
+        if (k === 'displayH') return int(16, 1024)(n);
+        return false; // 모르는 항목은 거부
+      }),
+  );
+
 /** 키마다 값을 검증하는 함수. 여기 없는 키는 저장하지 않는다. */
 const SPEC = {
   backend: { selected: (/** @type {unknown} */ v) => v === null || (typeof v === 'string' && v.length <= 64) },
@@ -112,6 +129,7 @@ const SPEC = {
     'claude-code': { enabled: isBool, path: str(1000), tools: isBool },
     'openai-compat': { enabled: isBool, baseUrl: httpUrlOrEmpty, model: str(200) },
   },
+  skinTuning,
   persona: { selected: (/** @type {unknown} */ v) => typeof v === 'string' && /^[^\\/:*?"<>|]{1,60}\.txt$/.test(v) && !v.includes('..') },
   permissions: { autoAllowRead: isBool, workDir: str(1000) },
   behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
@@ -146,10 +164,11 @@ function merge(base, patch, spec) {
   for (const key of Object.keys(base)) {
     const s = spec?.[key];
     const p = isObject(patch) ? patch[key] : undefined;
-    if (isObject(base[key])) {
+    if (typeof s === 'function') {
+      // 값 하나(또는 통째로 검증하는 레코드/배열)
+      out[key] = p !== undefined && s(p) ? structuredClone(p) : base[key];
+    } else if (isObject(base[key])) {
       out[key] = merge(base[key], p, s);
-    } else if (typeof s === 'function' && p !== undefined && s(p)) {
-      out[key] = p;
     } else {
       out[key] = base[key];
     }
@@ -174,7 +193,8 @@ export function createStore({ file, safeStorage }) {
   const listeners = new Set();
 
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    // 메모장 등 Windows 편집기는 UTF-8 BOM을 붙여 저장하므로, BOM이 있어도 읽을 수 있어야 한다.
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     data = merge(DEFAULTS, raw, SPEC);
     if (isObject(raw.secrets)) {
       for (const n of SECRET_NAMES) if (typeof raw.secrets[n] === 'string') secrets[n] = raw.secrets[n];

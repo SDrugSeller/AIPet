@@ -1,7 +1,7 @@
 // @ts-check
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { DEFAULT_OPENAI_BASE_URL } from './config.js';
-import { listSkins } from './skin.js';
+import { inspectSkin, listSkins } from './skin.js';
 
 /**
  * 설정 창 (일반 창). 렌더러는 별도 preload로 필요한 API만 쓰고, 비밀(API 키)은 값을 받지 못한다.
@@ -30,8 +30,13 @@ export function createSettingsWindow({ store, config, personas, host, preloadPat
     return { dir: personas.dir, items, selectedId, text: selectedId ? (personas.read(selectedId) ?? '') : '' };
   }
 
+  /** 지금 선택된 스킨의 원본 값과 시트 크기 (설정 창을 열 때 읽는다) */
+  /** @type {Awaited<ReturnType<typeof inspectSkin>>} */
+  let skinInfo = null;
+
   function state() {
     return {
+      skinTuning: skinInfo ? { ...skinInfo, current: store.get().skinTuning[skinInfo.id] ?? null } : null,
       persona: personaState(),
       skins,
       settings: store.get(),
@@ -146,6 +151,10 @@ export function createSettingsWindow({ store, config, personas, host, preloadPat
       void win.loadFile(htmlPath);
       void listSkins().then((list) => {
         skins = list;
+        pushState();
+      });
+      void inspectSkin(store.get().general.skin).then((info) => {
+        skinInfo = info;
         pushState();
       });
       void host.refresh().then(pushState); // 열 때마다 최신 상태로

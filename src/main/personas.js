@@ -63,7 +63,8 @@ export function createPersonaStore({ dir, seedDir }) {
     read(id) {
       if (!isValidPersonaId(id)) return null;
       try {
-        return fs.readFileSync(fileOf(id), 'utf8').slice(0, MAX_PERSONA_CHARS);
+        // 메모장으로 고치면 BOM이 붙으므로 떼어 낸다 (프롬프트에 보이지 않는 문자가 들어가지 않게)
+        return fs.readFileSync(fileOf(id), 'utf8').replace(/^\uFEFF/, '').slice(0, MAX_PERSONA_CHARS);
       } catch {
         return null;
       }

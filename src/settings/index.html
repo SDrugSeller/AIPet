@@ -151,6 +151,34 @@
         </label>
       </section>
 
+      <section id="tuneSection" hidden>
+        <h2>스킨 크기</h2>
+        <p class="hint">
+          시트(PNG)의 한 칸(프레임)이 몇 픽셀인지와, 화면에서 펫이 몇 픽셀 높이로 보일지를 정해요.
+          이 값에 맞춰 <strong>크기, 발 위치(앵커), 클릭 영역(히트박스)이 자동으로 조절돼요.</strong>
+          다른 해상도의 그림으로 바꿨을 때 써 보세요.
+        </p>
+        <p class="muted" id="tuneInfo"></p>
+        <div class="grid3">
+          <label class="field">프레임 너비 (px)
+            <input type="number" id="tuneFW" min="8" max="2048" />
+          </label>
+          <label class="field">프레임 높이 (px)
+            <input type="number" id="tuneFH" min="8" max="2048" />
+          </label>
+          <label class="field">화면에 표시할 높이 (px)
+            <input type="number" id="tuneDH" min="16" max="1024" />
+          </label>
+        </div>
+        <p class="muted" id="tuneResult"></p>
+        <p class="reason" id="tuneProblems"></p>
+        <div class="inline">
+          <button type="button" id="tuneDetect">시트에서 자동 감지</button>
+          <button type="button" id="tuneApply">적용 (앱 다시 시작)</button>
+          <button type="button" id="tuneReset">원래대로</button>
+        </div>
+      </section>
+
       <footer><span id="saved" aria-live="polite"></span></footer>
     </main>
     <script type="module" src="settings.js"></script>

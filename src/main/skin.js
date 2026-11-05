@@ -3,6 +3,7 @@ import { net, protocol } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { applyTuning } from '../shared/skinTuning.js';
 
 export const SKIN_SCHEME = 'aipet-skin';
 
@@ -19,8 +20,9 @@ function isInside(root, target) {
  * skin.json을 읽어 검증한 뒤 렌더러에 넘길 데이터를 반환한다.
  * 스킨은 데이터만 포함하며, 시트 경로는 스킨 폴더 내부로 제한한다.
  * @param {string} name
+ * @param {import('../shared/skinTuning.js').Tuning | null} [tuning]  설정 창에서 입력한 프레임 크기/표시 높이
  */
-export async function loadSkin(name) {
+export async function loadSkin(name, tuning) {
   const dir = path.resolve(skinsRoot, name);
   if (!isInside(skinsRoot, dir)) throw new Error(`잘못된 스킨 이름: ${name}`);
 
@@ -32,18 +34,70 @@ export async function loadSkin(name) {
     if (!isInside(dir, sheet)) throw new Error(`skin.json: '${state}' 시트 경로가 스킨 폴더를 벗어납니다`);
   }
 
+  // 크기(scale)/앵커/히트박스는 사용자가 입력한 프레임 크기와 표시 높이에 맞춰 자동 환산한다.
+  const t = applyTuning({ frameSize: raw.frameSize, scale: raw.scale ?? 1, anchor: raw.anchor, hitbox: raw.hitbox }, tuning);
+
   return {
     name,
-    frameSize: raw.frameSize,
-    scale: raw.scale ?? 1,
+    frameSize: t.frameSize,
+    scale: t.scale,
     facing: raw.facing ?? 'left',
     flippable: raw.flippable ?? true,
     pixelArt: raw.pixelArt ?? false,
     fallbacks: raw.fallbacks ?? {},
-    anchor: raw.anchor,
-    hitbox: raw.hitbox ?? { x: 0, y: 0, w: raw.frameSize.w, h: raw.frameSize.h },
+    anchor: t.anchor,
+    hitbox: t.hitbox,
     animations: raw.animations,
   };
+}
+
+/** PNG 헤더에서 크기를 읽는다. @param {string} file @returns {Promise<{ width: number, height: number } | null>} */
+async function pngSize(file) {
+  try {
+    const fh = await fs.open(file, 'r');
+    try {
+      const b = Buffer.alloc(24);
+      await fh.read(b, 0, 24, 0);
+      if (b.toString('ascii', 1, 4) !== 'PNG') return null;
+      return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return null; // 없는 시트는 fallbacks로 대체되므로 오류가 아니다
+  }
+}
+
+/**
+ * 설정 창에 보여 줄 스킨 정보: skin.json의 원본 값과, 실제로 있는 시트의 이미지 크기.
+ * @param {string} name
+ */
+export async function inspectSkin(name) {
+  const dir = path.resolve(skinsRoot, name);
+  if (!isInside(skinsRoot, dir)) return null;
+  try {
+    const raw = JSON.parse(await fs.readFile(path.join(dir, 'skin.json'), 'utf8'));
+    /** @type {{ anim: string, frames: number, width: number, height: number }[]} */
+    const sheets = [];
+    for (const [anim, a] of Object.entries(/** @type {Record<string, any>} */ (raw.animations))) {
+      const file = path.resolve(dir, String(a.sheet));
+      if (!isInside(dir, file)) continue;
+      const size = await pngSize(file);
+      if (size) sheets.push({ anim, frames: a.frames, ...size });
+    }
+    return {
+      id: name,
+      authored: {
+        frameSize: raw.frameSize,
+        scale: raw.scale ?? 1,
+        anchor: raw.anchor,
+        hitbox: raw.hitbox ?? { x: 0, y: 0, w: raw.frameSize.w, h: raw.frameSize.h },
+      },
+      sheets,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
