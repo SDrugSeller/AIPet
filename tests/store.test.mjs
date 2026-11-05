@@ -164,3 +164,13 @@ test('정해진 시각 알림 목록: 형식이 맞아야 저장되고 재시작
     assert.deepEqual(s.get().spontaneous.reminders, good);
   }
 });
+
+test('먼저 말 걸기 전체 스위치는 기본 켜짐이고, 저장되며 재시작 후에도 유지된다', () => {
+  const { file } = tmpFile();
+  const s = createStore({ file, safeStorage: fakeSafe() });
+  assert.equal(s.get().spontaneous.enabled, true);
+  s.update({ spontaneous: { enabled: false } });
+  assert.equal(createStore({ file, safeStorage: fakeSafe() }).get().spontaneous.enabled, false);
+  s.update({ spontaneous: { enabled: 'no' } });
+  assert.equal(s.get().spontaneous.enabled, false);
+});

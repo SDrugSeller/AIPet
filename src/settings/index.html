@@ -114,9 +114,12 @@
       <section>
         <h2>먼저 말 걸기</h2>
         <p class="hint">
-          펫이 부르지 않았는데 말을 거는 기능이에요. 방해 금지일 때, 전체화면 앱이나 발표 중일 때,
-          대화 중일 때는 말하지 않아요.
+          펫이 부르지 않았는데 말풍선으로 알려 주는 기능이에요. 정해진 문구나 이미 받은 답을 보여 줄 뿐,
+          <strong>AI를 호출하지 않아서 토큰을 쓰지 않아요.</strong>
+          방해 금지일 때, 전체화면 앱이나 발표 중일 때, 대화 중일 때는 말하지 않아요.
         </p>
+        <label class="row"><input type="checkbox" data-path="spontaneous.enabled" /> <strong>먼저 말 걸기 사용</strong> <span class="muted">(끄면 아래 항목이 모두 멈춰요)</span></label>
+        <div id="spontaneousOptions">
         <label class="row"><input type="checkbox" data-path="general.doNotDisturb" /> 방해 금지</label>
         <label class="row"><input type="checkbox" data-path="spontaneous.notifyDone" /> 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 주기</label>
         <label class="row"><input type="checkbox" data-path="spontaneous.breakReminder" /> 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말하기</label>
@@ -132,6 +135,7 @@
         <div class="field">정해진 시각 알림
           <div id="reminders"></div>
           <button type="button" id="addReminder">알림 추가</button>
+        </div>
         </div>
       </section>
 

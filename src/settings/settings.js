@@ -96,6 +96,12 @@ function render() {
 
   renderReminders();
 
+  // 먼저 말 걸기를 끄면 하위 항목을 회색으로 비활성화한다
+  const spOn = !!s.spontaneous.enabled;
+  const spBox = $('#spontaneousOptions');
+  spBox.style.opacity = spOn ? '1' : '0.5';
+  for (const el of spBox.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (el).disabled = !spOn;
+
   /** @type {HTMLInputElement} */ ($('#openaiBaseUrl')).placeholder = state.defaults.openaiBaseUrl;
   /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
   $('#keyStatus').textContent = state.hasKey.openaiKey
@@ -180,6 +186,7 @@ function renderReminders() {
       text.addEventListener('change', saveReminders);
 
       row.append(time, text, on, del);
+      for (const el of row.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (el).disabled = !state.settings.spontaneous.enabled;
       return row;
     }),
   );

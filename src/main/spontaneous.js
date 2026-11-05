@@ -10,7 +10,7 @@ export const AWAY_AFTER_SEC = 5 * 60;
 const REMINDER_GRACE_MIN = 30;
 
 /**
- * @typedef {{ breakReminder: boolean, breakAfterMin: number, breakMessage: string, cooldownMin: number,
+ * @typedef {{ enabled: boolean, breakReminder: boolean, breakAfterMin: number, breakMessage: string, cooldownMin: number,
  *   notifyDone: boolean, reminders: { time: string, text: string, enabled: boolean }[] }} SpontaneousSettings
  * @typedef {{ dnd: boolean, fullscreen: boolean, chatActive: boolean, hidden: boolean }} Quiet
  *   fullscreen: 전체화면 앱/발표 중, chatActive: 대화창이 열려 있거나 응답 중, hidden: 펫이 숨겨져 있음
@@ -39,6 +39,7 @@ export function createNotifier({ getSettings, getQuiet, idleSeconds, show, now =
 
   /** @param {Kind} kind */
   function canSpeak(kind) {
+    if (!getSettings().enabled) return false;
     const q = getQuiet();
     if (q.dnd || q.fullscreen || q.hidden) return false;
     if (q.chatActive) return false; // 사용자가 이미 펫과 대화 중이거나 응답을 기다리는 중
@@ -59,6 +60,13 @@ export function createNotifier({ getSettings, getQuiet, idleSeconds, show, now =
     tick() {
       const s = getSettings();
       const t = now();
+
+      // 전체 스위치가 꺼져 있으면 아무것도 하지 않고, 켰을 때 묵은 알림이 한꺼번에 나오지 않게 비운다.
+      if (!s.enabled) {
+        activeSince = null;
+        pendingReminders = [];
+        return;
+      }
 
       // 자리를 비웠다가 돌아오면 "쉬지 않고 쓴 시간"을 새로 센다.
       if (idleSeconds() >= AWAY_AFTER_SEC) activeSince = null;

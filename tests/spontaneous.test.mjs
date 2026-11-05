@@ -8,6 +8,7 @@ const MIN = 60_000;
 /** 시계와 입력을 마음대로 조작할 수 있는 테스트 환경 */
 function setup(settings = {}, quiet = {}) {
   const s = {
+    enabled: true,
     breakReminder: true,
     breakAfterMin: 60,
     breakMessage: '쉬어요',
@@ -166,4 +167,25 @@ test('작업 완료 알림은 쿨다운과 무관하고, 긴 내용은 줄이고
   assert.equal(shown.length, 2);
   assert.ok(shown[0].text.length <= 141 && shown[0].text.endsWith('…'));
   assert.equal(shown[1].text, '문제가 생겼어요: 연결이 끊어졌어요');
+});
+
+test('전체 스위치를 끄면 어떤 말도 하지 않는다 (쉬라는 말, 시각 알림, 작업 완료)', () => {
+  const off = setup(
+    { enabled: false, breakAfterMin: 10, reminders: [{ time: '09:05', text: 'A', enabled: true }] },
+    {},
+  );
+  off.n.tick();
+  off.advance(120);
+  assert.equal(off.shown.length, 0);
+  assert.equal(off.n.onTaskDone({ ok: true, text: '끝' }), false);
+  assert.equal(off.shown.length, 0);
+});
+
+test('전체 스위치를 켜는 순간 묵은 알림이 한꺼번에 나오지 않는다', () => {
+  const t = setup({ enabled: false, breakAfterMin: 10, reminders: [{ time: '09:05', text: 'A', enabled: true }] });
+  t.n.tick();
+  t.advance(60); // 끈 채로 한 시간이 지났다
+  t.s.enabled = true;
+  t.advance(1);
+  assert.equal(t.shown.length, 0); // 쉬는 시간 세기는 지금부터 새로, 한참 지난 시각 알림은 버린다
 });

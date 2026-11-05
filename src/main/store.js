@@ -45,6 +45,8 @@ export const DEFAULTS = {
     hideOnFullscreen: true,
   },
   spontaneous: {
+    /** 먼저 말 걸기 전체 스위치. 끄면 아래 항목이 모두 동작하지 않는다. (AI를 호출하지 않으므로 토큰은 쓰지 않는다) */
+    enabled: true,
     /** 대화창을 닫아 둔 사이 답이 오면 말풍선으로 알려 준다 */
     notifyDone: true,
     /** 오래 쉬지 않고 컴퓨터를 쓰면 쉬라고 말한다 (기본 꺼짐: 먼저 말을 거는 기능은 옵트인) */
@@ -114,6 +116,7 @@ const SPEC = {
   permissions: { autoAllowRead: isBool, workDir: str(1000) },
   behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
   spontaneous: {
+    enabled: isBool,
     notifyDone: isBool,
     breakReminder: isBool,
     breakAfterMin: int(5, 600),
