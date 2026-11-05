@@ -212,6 +212,7 @@ AIPet/
 | M4 | 트레이, 설정, 권한 승인 UI, 저장소 | 재시작 후 설정 유지 |
 | M5 | 활성 창 인식, 창 위 걸터앉기, 자발적 발화 | 쿨다운/방해금지 동작 |
 | M5.5 | 다중 연결(연결마다 펫·스킨·말투·계정), Codex/Gemini CLI·Anthropic API 어댑터 | 완료 |
+| M5.6 | 첫 실행 안내 (아래 "첫 실행 안내" 참조) | 처음 쓰는 사용자가 안내만 보고 연결 완료 |
 | M6 | 패키징 (개인용 스킨 제외) | 설치 파일 생성 |
 
 ## 10. 리스크 / 미결 사항
@@ -222,3 +223,33 @@ AIPet/
 - 멀티 모니터 + 혼합 DPI 좌표계 처리
 - 캐릭터 아트 에셋 조달 방식 (직접 제작 / AI 생성 / 라이선스)
 - ~~Windows에서 활성 창 좌표 취득 방식~~ → M5에서 상주 PowerShell 도우미(Win32 API)로 해결. 설치할 것이 없고 제목/내용을 읽지 않도록 제한할 수 있다. 부하가 문제가 되면 네이티브 모듈(koffi 등)로 교체할 수 있게 `windowWatcher.js`로 분리해 두었다. macOS는 미구현.
+
+## 11. 첫 실행 안내 (계획, M6 전에 구현)
+
+처음 쓰는 사용자가 구독 계정/무료 키를 연결하는 흐름을 앱이 안내한다. 앱은 토큰을 받지 않는다는 원칙(4장)은 그대로다.
+
+- 현재 상태: CLI 미설치/미로그인 시 카드에 한 줄 안내만 뜬다. 설치 링크, 단계별 안내, 종류 선택 마법사가 없고 기본 연결은 Claude Code 하나다.
+- 구독 계정별 로그인 순서 (카드에서 단계로 보여 준다):
+  - Claude(Pro/Max): Claude Code 설치 → 터미널에서 `claude` 로그인 → 연결 카드의 "다시 확인". 계정이 더 필요하면 "계정 설정 폴더" + "로그인 명령 복사".
+  - ChatGPT(Codex): `npm i -g @openai/codex` → `codex login`.
+  - Google(Gemini): `npm i -g @google/gemini-cli` → `gemini`로 로그인 (또는 `GEMINI_API_KEY`). 로그인 여부는 앱이 정확히 알 수 없다.
+  - API 키형(Anthropic API, OpenAI 호환): 키 입력.
+- 만들 것: (1) 연결 추가 시 "무엇으로 연결할까요?"(구독 계정 / API 키 / 무료·로컬) 선택, (2) 종류별 설치·로그인 단계와 복사 가능한 명령, (3) CLI가 설치되면 자동 감지(주기적 재확인)해서 "다시 확인" 없이 갱신, (4) 첫 실행 시 아무것도 감지되지 않으면 안내 카드를 먼저 보여 주기.
+- 확인 필요: 구독 계정을 서드파티 앱에서 CLI로 호출하는 방식이 각 제공사 약관에 맞는지는 확인하지 못했다. 배포 전 재검토(4.3).
+- 무료로 쓰는 방법 (2026-11 조사, 한도와 정책은 자주 바뀌므로 구현 시 재확인):
+  - ChatGPT 무료 계정: Codex CLI를 ChatGPT 로그인으로 쓰면 Free 플랜에도 포함(한도 있음, Codex Cloud 제외).
+  - Gemini API 무료 키(AI Studio): 한도는 AI Studio 콘솔에서 확인. 무료 티어 요청은 Google 제품 개선에 쓰일 수 있다. OpenAI 호환 연결로 쓸 수 있다: 주소 `https://generativelanguage.googleapis.com/v1beta/openai/`, 키는 Bearer, 모델은 직접 입력(미검증).
+  - Gemini CLI의 개인 Google 로그인 무료 이용은 2026-06-18에 종료되고 Antigravity CLI로 대체됐다는 보도가 있다. 현재 Gemini CLI 어댑터의 안내("gemini로 로그인")를 재검토하고, 필요하면 Antigravity CLI 어댑터를 따로 조사한다.
+  - 로컬: Ollama 등 (이미 지원).
+
+## 12. 다음 작업 (진행 순서)
+
+1. **M6 패키징** (착수 전, 조사만 마침)
+   - `electron-builder` 도입, Windows 설치 파일(NSIS). `package.json`에 `build` 설정: appId/productName, `files`에 `src/`, `skins/default`, `skins/skin.schema.json`, `personas/`, `package.json`만 포함. **`skins/genba-cat/`, `tools/`, `tests/`, `docs/`는 제외**(개인용 스킨은 절대 배포 금지).
+   - 설치본에서 확인할 것: 앱 파일이 읽기 전용 asar 안에 있으므로 (a) 스킨 경로(`skin.js`, `index.js`의 `../../skins`)와 `aipet-skin://` 프로토콜, (b) 말투 기본 파일 복사(`seedDir`), (c) 트레이 아이콘(스킨 시트를 잘라 씀), (d) 상주 PowerShell 도우미(`windowWatcher.js`, -EncodedCommand라 파일 의존 없음), (e) 로그인 시 자동 시작(`app.isPackaged`일 때만 적용), (f) `claude`/`codex`/`gemini` 실행 파일 탐색이 설치본에서도 동작하는지.
+   - 앱 아이콘(.ico) 필요. 사용자가 스킨을 추가할 폴더가 asar 밖(`%APPDATA%/aipet/skins` 등)에도 있어야 하는지 결정.
+   - 완료 기준: 깨끗한 사용자 프로필에서 설치 → 실행 → 연결 → 대화까지 확인. 확인 전에는 "배포 가능"이라고 하지 않는다.
+2. **첫 실행 안내** (11장): 연결 종류 선택(구독/API 키/무료·로컬), 종류별 설치·로그인 단계, CLI 자동 감지, Gemini 무료 키 프리셋. Gemini CLI 안내 문구 재검토.
+3. **API 연결의 도구 루프** (후순위, 규모 큼): 현재 Anthropic API/OpenAI 호환 연결은 대화만 가능하다. 앱이 읽기/검색/쓰기/명령 도구를 정의하고 작업 폴더 안에서만 실행하며, 쓰기·명령은 기존 승인 카드로 묻는다. 어댑터별 도구 호출 형식 변환과 경로 검증 테스트가 필요하다. 이후 Codex/Gemini CLI의 읽기 전용 제한 해제(각 CLI의 승인 프로토콜 검증 후)도 검토.
+4. 알려진 제약: 쉬기/정시 알림은 첫 번째 펫만 말함, 펫끼리 겹침 회피 없음, 외부 서버/계정과의 실제 통신은 가짜 서버 기반으로만 검증, 구독 계정의 CLI 호출이 각 제공사 약관에 맞는지 미확인.
+
