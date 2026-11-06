@@ -126,14 +126,34 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   let focusPetId = null;
   let focusDisplay = 0;
 
+  /** 펫을 끄는 중에 미룬 포커스 맞추기가 있는가 (드래그가 끝나면 한 번 한다) */
+  let focusSyncPending = false;
+
+  /**
+   * 열려 있는 대화창이 있는 모니터의 창만 키보드 포커스를 받게 맞춘다.
+   *  - 버튼을 누르고 끄는 동안에는 하지 않는다. 마우스를 잡고 있는 창이 포커스를 잃으면 마우스 캡처가 풀려서 드래그가 끊긴다
+   *    (펫이 다른 모니터로 넘어갈 때 실제로 그랬다). 끝난 뒤에 맞춘다.
+   *  - 다른 창들을 먼저 포커스 불가로 바꾸고, 대상 창을 마지막에 처리한다. 대상 창에 포커스를 준 뒤에 다른 창을 바꾸면
+   *    Windows가 다음 창으로 활성화를 넘기면서 방금 준 포커스를 도로 빼앗았다 ("잠깐 갔다가 즉시 돌아가는" 증상).
+   *  - 이미 그 상태인 창은 건드리지 않는다 (불필요한 호출이 활성화를 흔든다).
+   */
   function syncChatFocus() {
+    if (drag) {
+      focusSyncPending = true;
+      return;
+    }
+    focusSyncPending = false;
     const target = focusPetId ? pets.get(focusPetId) : null;
     const want = target && target.host.isOpen ? target.engine.pet.display : 0;
+    if (debug) console.log('[focus] sync want=', want, 'prev=', focusDisplay, 'order=', [...windows.keys()].join(','));
     for (const [id, win] of windows) {
-      if (win.isDestroyed()) continue;
-      const on = want !== 0 && id === want;
-      win.setFocusable(on);
-      if (on) win.focus();
+      if (win.isDestroyed() || id === want) continue;
+      if (win.isFocusable()) win.setFocusable(false);
+    }
+    const win = want !== 0 ? windows.get(want) : null;
+    if (win && !win.isDestroyed()) {
+      if (!win.isFocusable()) win.setFocusable(true);
+      if (!win.isFocused()) win.focus();
     }
     focusDisplay = want;
   }
@@ -428,6 +448,10 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     win.setAlwaysOnTop(true, 'screen-saver');
     setClickThrough(win, true); // 기본은 클릭 통과
     cursorSent.delete(display.id);
+    if (debug) {
+      win.on('focus', () => console.log('[focus] window', display.id, 'GOT focus'));
+      win.on('blur', () => console.log('[focus] window', display.id, 'LOST focus'));
+    }
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {
@@ -511,6 +535,13 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const pet = petOf(e, petId);
     if (!pet || !pet.host.isOpen) return;
     focusPetId = pet.id;
+    if (debug) {
+      // 입력칸 클릭과 그 뒤의 포커스 결과를 짝지어 남긴다 (none이면 포커스가 앱 밖의 다른 창에 있다)
+      const owner = () => (BrowserWindow.getFocusedWindow() ? `overlay ${findDisplayId(BrowserWindow.getFocusedWindow()?.webContents ?? e.sender)}` : 'none(다른 앱)');
+      const win = windows.get(findDisplayId(e.sender) ?? -1);
+      console.log('[focus] 입력칸 클릭: 클릭한 창 isFocused=', win?.isFocused(), '현재 포커스=', owner());
+      for (const ms of [150, 600]) setTimeout(() => console.log(`[focus] 입력칸 클릭 +${ms}ms: 포커스=`, owner()), ms);
+    }
     syncChatFocus();
   });
   ipcMain.on('notice:action', (e, petId, action) => {
@@ -537,12 +568,32 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   /** 한 번에 한 마리만 드래그할 수 있다 @type {{ petId: string, dx: number, dy: number, timer: NodeJS.Timeout } | null} */
   let drag = null;
 
+  // 디버그 전용: 드래그가 어떻게 이어지고 끝나는지(또는 끝나지 않는지) 기록한다.
+  let dragLogAt = 0;
+  let dragOutsideLogged = false;
+  /** @param {Electron.Point} c @param {{ x: number, y: number, display: number }} p */
+  function dragDiag(c, p) {
+    const now = Date.now();
+    const inside = screen.getAllDisplays().some((d) => c.x >= d.bounds.x && c.x < d.bounds.x + d.bounds.width && c.y >= d.bounds.y && c.y < d.bounds.y + d.bounds.height);
+    if (!inside && !dragOutsideLogged) {
+      dragOutsideLogged = true;
+      console.log('[drag] 커서가 모든 모니터 범위 밖', JSON.stringify(c), '→ 가까운 모니터', screen.getDisplayNearestPoint(c).id);
+    } else if (inside) {
+      dragOutsideLogged = false;
+    }
+    if (now - dragLogAt > 2000) {
+      dragLogAt = now;
+      console.log('[drag] 따라가는 중', `cursor=${c.x},${c.y}`, `pet=${Math.round(p.x)},${Math.round(p.y)}`, `display=${p.display}`);
+    }
+  }
+
   function followCursor() {
     if (!drag) return;
     const pet = pets.get(drag.petId);
     if (!pet) return stopDrag();
     const p = pet.engine.pet;
     const c = screen.getCursorScreenPoint();
+    if (debug) dragDiag(c, p);
     const before = { x: p.x, y: p.y, display: p.display };
     // 펫은 커서가 있는 모니터로 옮겨 간다 (커서와 같은 모니터 좌표계에서 계산).
     p.display = screen.getDisplayNearestPoint(c).id;
@@ -557,11 +608,13 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   function stopDrag() {
     if (drag) clearInterval(drag.timer);
     drag = null;
+    if (focusSyncPending) syncChatFocus(); // 끄는 동안 미뤄 둔 포커스 이동
   }
 
   ipcMain.on('pet:dragging', (e, petId, dragging) => {
     const pet = petOf(e, petId);
     if (!pet || typeof dragging !== 'boolean') return;
+    if (debug) console.log('[drag] pet:dragging', dragging, JSON.stringify(screen.getCursorScreenPoint()));
     if (dragging) {
       stopDrag();
       pet.engine.startDrag();

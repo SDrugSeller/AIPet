@@ -19,6 +19,14 @@ let activeChat = null;
 window.addEventListener('focus', () => {
   if (activeChat?.isShown()) activeChat.focusInput();
 });
+/**
+ * 열려 있는 대화창의 입력칸으로 키보드 포커스를 되돌린다. 펫을 누르거나 끌면 캔버스가 포커스를 가져가 입력칸이 풀리는데,
+ * 창 자체는 계속 포커스를 갖고 있어서 `focus` 이벤트가 다시 오지 않으므로 직접 되돌려야 한다.
+ */
+export function refocusActiveChat() {
+  if (activeChat?.isShown() && document.hasFocus()) activeChat.focusInput();
+}
+
 // Esc는 포커스가 들어 있는 대화창만 닫는다.
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && activeChat?.isShown() && activeChat.bubble.contains(document.activeElement)) activeChat.close();

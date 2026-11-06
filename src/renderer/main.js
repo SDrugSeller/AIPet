@@ -3,7 +3,7 @@
 // 그릴 때 이 창의 원점(bounds.x/y)을 빼서 로컬 좌표로 바꾼다.
 // 펫은 연결 하나당 한 마리이고, 각 펫은 자기 모니터의 창에서만(isHome) 그려진다.
 import { positionAt } from '../shared/motion.js';
-import { createChat } from './chat.js';
+import { createChat, refocusActiveChat } from './chat.js';
 
 /** @type {any} */
 const api = /** @type {any} */ (window).aipet;
@@ -233,9 +233,17 @@ function loop() {
 /** 마지막으로 마우스 이동 이벤트를 받은 시각. 이벤트가 정상적으로 오는 동안에는 main이 읽어 준 커서 위치를 쓰지 않는다. */
 let lastRealMove = -Infinity;
 
+/** 디버그 전용: 드래그 수명 주기 기록 @param {...any} a */
+const dlog = (...a) => debug && console.log('[drag:renderer]', ...a);
+let noButtonLogged = false;
+
 window.addEventListener('pointermove', (e) => {
   lastRealMove = performance.now();
   lastPointer = { x: e.clientX, y: e.clientY };
+  if ((pressed || dragging) && e.buttons === 0 && !noButtonLogged) {
+    noButtonLogged = true;
+    dlog('버튼이 이미 떼어졌는데 드래그/누름 상태가 남아 있음', e.type, `client=${e.clientX},${e.clientY}`, 'pressed=', !!pressed, 'dragging=', dragging);
+  }
   if (pressed && !dragging && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > DRAG_THRESHOLD) {
     dragging = pressed.petId;
     api.setDragging(dragging, true); // 드래그 중 이동은 main이 커서 위치로 직접 처리한다.
@@ -263,15 +271,24 @@ api.onCursor((/** @type {{ x: number, y: number } | null} */ c) => {
   }
 });
 
+window.addEventListener('blur', () => dlog('window blur', 'pressed=', !!pressed, 'dragging=', dragging));
+window.addEventListener('focus', () => dlog('window focus'));
+
 document.documentElement.addEventListener('pointerleave', () => {
+  if (pressed || dragging) dlog('pointerleave while pressed/dragging', 'dragging=', dragging);
   lastPointer = null;
   if (!dragging && !pressed) setInteractive(false);
 });
+
+// 펫을 눌러도 대화창 입력칸의 포커스를 빼앗지 않는다 (누르는 동작의 기본 효과가 포커스 이동이다)
+canvas.addEventListener('mousedown', (e) => e.preventDefault());
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   const p = topPetAt(e.clientX, e.clientY);
   if (!p) return;
+  noButtonLogged = false;
+  dlog('pointerdown', p.id, `client=${e.clientX},${e.clientY}`, 'buttons=', e.buttons);
   pressed = { petId: p.id, x: e.clientX, y: e.clientY };
   // 누른 펫을 맨 위로 올린다
   drawOrder = [...drawOrder.filter((id) => id !== p.id), p.id];
@@ -282,6 +299,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
 /** @param {PointerEvent} e @param {boolean} cancelled */
 function release(e, cancelled) {
+  if (pressed || dragging) dlog('release', e.type, 'cancelled=', cancelled, `client=${e.clientX},${e.clientY}`, 'buttons=', e.buttons, 'dragging=', dragging);
   const wasDragging = dragging;
   const clicked = pressed && !dragging && !cancelled ? pressed.petId : null;
   pressed = null;
@@ -290,6 +308,7 @@ function release(e, cancelled) {
   if (clicked) api.petClick(clicked);
   lastPointer = { x: e.clientX, y: e.clientY };
   setInteractive(wantsMouse(e.clientX, e.clientY));
+  if (wasDragging || clicked) refocusActiveChat(); // 끌거나 눌러서 풀린 입력칸 포커스를 되돌린다
 }
 canvas.addEventListener('pointerup', (e) => release(e, false));
 canvas.addEventListener('pointercancel', (e) => release(e, true));
