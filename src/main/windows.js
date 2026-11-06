@@ -574,6 +574,20 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     Menu.buildFromTemplate(getMenuTemplate(pet?.id)).popup({ window: windows.get(id) });
   });
 
+  /**
+   * 오버레이 창을 모두 버리고 새로 만든다. 오래 쓰던 창(숨겼다 다시 보인 창, 화면 잠금/절전을 겪은 창)은
+   * 첫 마우스 누름을 놓쳐 클릭이 먹지 않는 일이 있어서, 처음 켰을 때와 같은 상태의 창으로 바꾼다.
+   * 새 창은 ready-to-show에서 (보여야 할 때만) 보인다. 펫과 대화 기록은 main에 있어서 새 창이 다시 받아 간다.
+   */
+  function rebuildWindows() {
+    for (const [id, win] of [...windows]) {
+      windows.delete(id);
+      if (!win.isDestroyed()) win.destroy();
+    }
+    for (const d of screen.getAllDisplays()) createWindow(d);
+    syncChatFocus(); // 열려 있는 대화창이 있으면 새 창이 키보드 포커스를 받게 한다
+  }
+
   /** 모든 오버레이 창을 보이거나 숨긴다. */
   function applyVisibility() {
     const show = visible && !suspended;
@@ -583,18 +597,32 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       return;
     }
     // hide()했다가 showInactive()로 다시 보인 창은 첫 마우스 누름(pointerdown)을 놓친다 (떼는 이벤트만 도착해
-    // 클릭이 먹지 않는다). 그래서 한 번이라도 숨겼다면 기존 창을 버리고 처음 켰을 때처럼 새 창을 만든다.
+    // 클릭이 먹지 않는다). 그래서 한 번이라도 숨겼다면 다시 보일 때 새 창으로 바꾼다.
     if (windowsWereHidden) {
       windowsWereHidden = false;
-      for (const [id, win] of [...windows]) {
-        windows.delete(id);
-        if (!win.isDestroyed()) win.destroy();
-      }
-      for (const d of screen.getAllDisplays()) createWindow(d); // ready-to-show에서 보여 준다
+      rebuildWindows();
       return;
     }
     for (const win of windows.values()) if (!win.isDestroyed()) win.showInactive();
   }
+
+  // 화면 잠금을 풀었거나 절전에서 깨어났을 때도 같은 증상(좌클릭이 안 먹음)이 보고됐다. 원인을 확정하지는 못했지만
+  // 새 창으로 바꾸면 처음 켰을 때처럼 동작하므로 같은 방법을 쓴다. (잠금/절전 중에는 창이 숨겨져 있지 않다)
+  let rebuildTimer = /** @type {NodeJS.Timeout | null} */ (null);
+  function rebuildAfterSessionReturn() {
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    // 해제 직후에는 모니터와 바탕화면이 아직 자리 잡는 중일 수 있어 잠시 기다렸다가 한 번만 바꾼다.
+    rebuildTimer = setTimeout(() => {
+      rebuildTimer = null;
+      if (!visible || suspended) {
+        windowsWereHidden = true; // 보이게 될 때 어차피 새 창으로 바뀐다
+        return;
+      }
+      rebuildWindows();
+    }, 1500);
+  }
+  powerMonitor.on('unlock-screen', rebuildAfterSessionReturn);
+  powerMonitor.on('resume', rebuildAfterSessionReturn);
 
   function closeAllChats() {
     for (const pet of pets.values()) pet.host.setOpen(false);
@@ -688,6 +716,9 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   const tickTimer = setInterval(() => notifier.tick(), tickMs);
 
   app.on('before-quit', () => {
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    powerMonitor.off('unlock-screen', rebuildAfterSessionReturn);
+    powerMonitor.off('resume', rebuildAfterSessionReturn);
     for (const pet of pets.values()) pet.host.dispose();
     watcher.stop();
     clearInterval(tickTimer);
