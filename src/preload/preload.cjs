@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('aipet', {
   onPetsSync: (/** @type {(list: any[]) => void} */ cb) => on('pets:sync', cb),
   onPetState: (/** @type {(s: any) => void} */ cb) => on('pet:state', cb),
   onBounds: (/** @type {(b: any) => void} */ cb) => on('overlay:bounds', cb),
+  /** 앱이 직접 읽은 커서 위치(화면 좌표). 이 창 밖이면 null. 마우스 이동 이벤트가 오지 않을 때의 보조 경로 */
+  onCursor: (/** @type {(c: { x: number, y: number } | null) => void} */ cb) => on('overlay:cursor', cb),
   onChatState: (/** @type {(s: any) => void} */ cb) => on('chat:state', cb),
   onChatUser: (/** @type {(m: any) => void} */ cb) => on('chat:user', cb),
   onAgentEvent: (/** @type {(e: any) => void} */ cb) => on('agent:event', cb),

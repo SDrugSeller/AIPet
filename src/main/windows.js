@@ -53,6 +53,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   const sleepSec = Number(process.env.AIPET_SLEEP_AFTER_SEC);
   const sleepAfterMs = (debug && sleepSec > 0 ? sleepSec : 60) * 1000;
 
+  // 디버그 전용: 마우스 이동 전달(forward)을 끄면 Windows가 전역 마우스 훅을 조용히 제거한 상황과 같아진다.
+  const noForward = debug && process.env.AIPET_NO_FORWARD === '1';
+  const noCursorPoll = debug && process.env.AIPET_NO_CURSOR_POLL === '1';
+  /** 클릭 통과 상태를 바꾼다. 통과 중에도 펫 위 마우스를 알 수 있도록 이동 이벤트 전달(forward)을 켠다. @param {Electron.BrowserWindow} win @param {boolean} ignore */
+  const setClickThrough = (win, ignore) => win.setIgnoreMouseEvents(ignore, ignore && !noForward ? { forward: true } : undefined);
+
   /** @param {string} channel @param {any} payload */
   function sendAll(channel, payload) {
     for (const win of windows.values()) {
@@ -420,7 +426,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     });
 
     win.setAlwaysOnTop(true, 'screen-saver');
-    win.setIgnoreMouseEvents(true, { forward: true }); // 기본은 클릭 통과
+    setClickThrough(win, true); // 기본은 클릭 통과
+    cursorSent.delete(display.id);
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.once('ready-to-show', () => {
@@ -490,6 +497,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   ipcMain.on('pet:click', (e, petId) => {
     const pet = petOf(e, petId);
     if (!pet) return;
+    if (debug) console.log('[pet:click]', pet.id);
     pet.engine.poke();
     pet.host.setOpen(!pet.host.isOpen);
   });
@@ -519,7 +527,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   ipcMain.on('overlay:set-interactive', (e, interactive) => {
     const id = findDisplayId(e.sender);
     if (id === null || typeof interactive !== 'boolean') return;
-    windows.get(id)?.setIgnoreMouseEvents(!interactive, { forward: true });
+    const win = windows.get(id);
+    if (win && !win.isDestroyed()) setClickThrough(win, !interactive);
   });
 
   // 드래그 중 좌표는 렌더러의 clientX/Y 대신 main의 커서 좌표를 쓴다.
@@ -712,6 +721,30 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
 
   // --- 시작/정리 ---
 
+  /**
+   * 마우스 이동 알림의 보조 경로. 클릭 통과 중인 창은 Electron이 Windows 전역 마우스 훅(WH_MOUSE_LL)으로 받아 전달하는
+   * 이동 이벤트로만 "펫 위에 마우스가 올라왔는지" 알 수 있다. 그런데 Windows는 PC가 바쁘거나 다른 프로그램의 훅과 겹쳐서
+   * 훅이 제때 응답하지 못하면 훅을 조용히 떼어 버리고, Electron은 그걸 모른 채 다시 설치하지 않는다. 그러면 펫이 마우스를
+   * 영영 받지 못해 클릭이 아래 창으로 새어 나간다. 그래서 앱이 직접 커서 위치를 읽어 각 창에 알려 준다 (드래그 때와 같은 방식).
+   * 렌더러는 정상적인 이벤트가 오는 동안에는 이 값을 쓰지 않는다.
+   */
+  /** @type {Map<number, string>} 창(모니터 id) → 마지막으로 보낸 값 (같으면 다시 보내지 않는다) */
+  const cursorSent = new Map();
+  function sendCursor() {
+    if (!visible || suspended || windows.size === 0) return;
+    const c = screen.getCursorScreenPoint();
+    for (const [id, win] of windows) {
+      if (win.isDestroyed() || !win.isVisible()) continue;
+      const b = win.getBounds();
+      const inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
+      const key = inside ? `${c.x},${c.y}` : '';
+      if (cursorSent.get(id) === key) continue;
+      cursorSent.set(id, key);
+      win.webContents.send('overlay:cursor', inside ? { x: c.x, y: c.y } : null);
+    }
+  }
+  const cursorTimer = noCursorPoll ? null : setInterval(sendCursor, 40);
+
   const tickMs = (debug && Number(process.env.AIPET_NOTIFY_TICK_MS)) || 30_000;
   const tickTimer = setInterval(() => notifier.tick(), tickMs);
 
@@ -722,6 +755,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     for (const pet of pets.values()) pet.host.dispose();
     watcher.stop();
     clearInterval(tickTimer);
+    if (cursorTimer) clearInterval(cursorTimer);
   });
 
   // 설정(연결, 스킨 크기, 올라가기 등)이 바뀌면 펫과 활성 창 판단을 다시 맞춘다.

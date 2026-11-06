@@ -230,13 +230,36 @@ function loop() {
 // --- 입력: 펫/말풍선 위에서만 마우스를 받고, 그 외에는 클릭 통과 ---
 // 펫을 누른 뒤 거의 움직이지 않고 떼면 "클릭"(대화창 토글), 일정 거리 이상 움직이면 "드래그".
 
+/** 마지막으로 마우스 이동 이벤트를 받은 시각. 이벤트가 정상적으로 오는 동안에는 main이 읽어 준 커서 위치를 쓰지 않는다. */
+let lastRealMove = -Infinity;
+
 window.addEventListener('pointermove', (e) => {
+  lastRealMove = performance.now();
   lastPointer = { x: e.clientX, y: e.clientY };
   if (pressed && !dragging && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > DRAG_THRESHOLD) {
     dragging = pressed.petId;
     api.setDragging(dragging, true); // 드래그 중 이동은 main이 커서 위치로 직접 처리한다.
   } else if (!pressed && !dragging) {
     setInteractive(wantsMouse(e.clientX, e.clientY));
+  }
+});
+
+// 보조 경로: 클릭 통과 중에 마우스 이동 이벤트가 오지 않으면(Windows가 마우스 훅을 떼어 낸 경우) main이 읽어 준 커서 위치로
+// 펫 위인지 판단한다. 이게 없으면 펫이 마우스가 올라온 줄 모르고 모든 클릭이 아래 창으로 새어 나간다.
+api.onCursor((/** @type {{ x: number, y: number } | null} */ c) => {
+  if (performance.now() - lastRealMove < 200) return; // 정상 경로가 동작 중이다
+  if (!c) {
+    if (lastPointer) {
+      lastPointer = null;
+      if (!dragging && !pressed) setInteractive(false);
+    }
+    return;
+  }
+  lastPointer = { x: c.x - origin.x, y: c.y - origin.y };
+  if (!dragging && !pressed) {
+    const want = wantsMouse(lastPointer.x, lastPointer.y);
+    if (debug && want !== interactive) console.log('[cursor-fallback]', want ? '펫 위: 마우스 받기' : '펫 밖: 클릭 통과');
+    setInteractive(want);
   }
 });
 
