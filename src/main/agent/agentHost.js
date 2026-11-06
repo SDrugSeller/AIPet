@@ -6,7 +6,8 @@ import { decide, describeRequest } from './permissions.js';
 const MAX_LOG = 20;
 
 /**
- * @typedef {{ role: 'user' | 'assistant' | 'error', text: string }} LogEntry
+ * @typedef {{ role: 'user' | 'assistant' | 'error' | 'session', text: string }} LogEntry
+ *   session: 대화 맥락이 끊겼다는 표시 (세션 만료, 새 대화 시작 등)
  * @typedef {{ id: string, title: string, detail: string }} PendingPermission
  *
  * @param {{
@@ -98,9 +99,23 @@ export function createAgentHost({
     if (log.length > MAX_LOG) log.shift();
   }
 
+  /** 대화 맥락이 끊겼다는 표시를 기록하고 대화창에도 알린다. @param {string} text */
+  function markSession(text) {
+    pushLog({ role: 'session', text });
+    broadcast('agent:event', { type: 'session', text });
+  }
+
+  /** 이미 오간 대화가 있는데 AI 연결이 바뀌었다면, 새 연결은 앞선 대화를 모르므로 표시를 남긴다. @param {string | null} before */
+  function noteBackendChange(before) {
+    if (!before || !selected || before === selected || !log.some((e) => e.role === 'user')) return;
+    markSession(`AI 연결이 ${byId(selected)?.label ?? selected}(으)로 바뀌어 새 대화로 시작해요`);
+  }
+
   function autoSelect() {
+    const before = selected;
     if (wanted && usable(wanted)) selected = wanted;
     else if (!(selected && usable(selected))) selected = adapters.map((a) => a.id).find(usable) ?? null;
+    noteBackendChange(before);
   }
 
   async function refresh() {
@@ -194,6 +209,9 @@ export function createAgentHost({
         setAnim('talk');
         break;
       }
+      case 'session':
+        pushLog({ role: 'session', text: ev.text }); // 이미 broadcast됨
+        break;
       case 'done':
         turn.ok = true;
         anim = '';
@@ -290,9 +308,11 @@ export function createAgentHost({
     /** 사용자가 고른 AI 연결 @param {string} id */
     select(id) {
       if (!byId(id) || id === selected) return;
+      const before = selected;
       wanted = id;
       selected = id;
       for (const a of adapters) a.reset?.();
+      noteBackendChange(before);
       onSelect?.(id);
       emitState();
     },

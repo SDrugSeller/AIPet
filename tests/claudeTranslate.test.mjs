@@ -48,8 +48,40 @@ test('thinking/tool_use 블록은 status 이벤트로 변환되고 같은 상태
 
 test('is_error 결과는 error 이벤트가 된다', () => {
   const st = newState();
-  const events = translateClaudeMessage({ type: 'result', is_error: true, result: 'Please run /login' }, st);
-  assert.deepEqual(events, [{ type: 'error', message: 'Please run /login' }]);
+  const events = translateClaudeMessage({ type: 'result', is_error: true, result: 'API Error: 529 overloaded' }, st);
+  assert.deepEqual(events, [{ type: 'error', message: 'API Error: 529 overloaded' }]);
+  assert.equal(st.failed, true);
+});
+
+// 실제 `claude -p`(로그인 안 된 설정 폴더)에서 확인한 출력: 안내 문장이 "답변"과 "결과"에 두 번 실려 온다
+const loggedOut = [
+  { type: 'assistant', error: 'authentication_failed', message: { model: '<synthetic>', content: [{ type: 'text', text: 'Not logged in · Please run /login' }] } },
+  { type: 'result', subtype: 'success', is_error: true, result: 'Not logged in · Please run /login', terminal_reason: 'api_error' },
+];
+
+test('로그인이 풀리면 안내를 답변으로 한 번 더 보이지 않고, 세션 만료 표시와 다시 로그인하라는 오류만 낸다', () => {
+  const st = newState();
+  const events = loggedOut.flatMap((m) => translateClaudeMessage(m, st));
+  assert.equal(events.filter((e) => e.type === 'text').length, 0); // 같은 문장이 답변 말풍선으로 또 나오지 않는다
+  assert.deepEqual(events[0], { type: 'session', text: '로그인 세션이 만료됐어요' });
+  assert.equal(events[1].type, 'error');
+  assert.match(/** @type {any} */ (events[1]).message, /\/login/);
+  assert.match(/** @type {any} */ (events[1]).message, /Not logged in/); // 원문도 함께 남긴다
+  assert.equal(events.length, 2);
+});
+
+test('이어 말하려던 세션이 없으면 오류로 내지 않고 sessionLost로 표시한다 (어댑터가 새 대화로 다시 시도)', () => {
+  // 실제 출력: result에 result 필드 없이 errors만 있다
+  const lost = { type: 'result', subtype: 'error_during_execution', is_error: true, session_id: 'old', errors: ['No conversation found with session ID: old'] };
+  const st = { ...newState(), resumed: true };
+  assert.deepEqual(translateClaudeMessage(lost, st), []);
+  assert.equal(st.sessionLost, true);
+  assert.equal(st.failed, true);
+  // 이어 말하려던 게 아니면(첫 대화) 같은 메시지도 그냥 오류다
+  const first = newState();
+  const events = translateClaudeMessage(lost, first);
+  assert.equal(events[0].type, 'error');
+  assert.match(/** @type {any} */ (events[0]).message, /No conversation found/);
 });
 
 test('알 수 없는 메시지는 무시한다', () => {

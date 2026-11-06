@@ -52,12 +52,20 @@ export function findClaudeBinary(env = process.env, override = '') {
   return null;
 }
 
+/** --resume한 세션을 CLI가 찾지 못할 때의 메시지 ("No conversation found with session ID: ...") */
+const NO_SESSION = /no conversation found/i;
+/** 로그인이 없거나 풀렸을 때 CLI가 내는 메시지 ("Not logged in · Please run /login" 등) */
+const LOGGED_OUT = /not logged in|please run \/login|invalid (api key|authentication)|oauth token.*(expired|revoked)/i;
+
 /**
  * stream-json 한 줄(JSON 객체)을 AgentEvent 목록으로 바꾼다. 상태(st)는 한 번의 send 동안 유지된다.
  * @typedef {{
  *   sawDelta: boolean, finished: boolean, status: string | null, sessionId: string | null,
  *   requests?: Map<string, any>,
+ *   resumed?: boolean, sessionLost?: boolean, failed?: boolean, apiError?: string, syntheticText?: string,
  * }} StreamState
+ *   resumed: 이어서 말하려고 --resume을 붙였다 / sessionLost: 이어 말하려던 세션을 CLI가 찾지 못했다
+ *   failed: 이번 대화가 오류로 끝났다 / apiError, syntheticText: CLI가 직접 만든 오류 안내(로그인 풀림 등)
  * @param {any} msg @param {StreamState} st
  * @returns {import('./adapter.js').AgentEvent[]}
  */
@@ -88,6 +96,13 @@ export function translateClaudeMessage(msg, st) {
       break;
     }
     case 'assistant': {
+      // 로그인이 풀리는 등 API 오류가 나면 CLI가 모델 대신 안내 문장을 "답변"으로 만들어 보내고(model '<synthetic>'),
+      // 같은 문장을 결과(result)에도 또 실어 보낸다. 답변으로 두 번 보이지 않게 따로 보관했다가 결과에서 한 번만 쓴다.
+      if (msg.message?.model === '<synthetic>' && typeof msg.error === 'string') {
+        st.apiError = msg.error;
+        st.syntheticText = (msg.message.content ?? []).map((/** @type {any} */ b) => (b?.type === 'text' ? b.text : '')).join('');
+        break;
+      }
       // --include-partial-messages가 동작하면 델타로 이미 받았다. 아닐 때만 완성된 메시지를 쓴다.
       if (!st.sawDelta) {
         for (const b of msg.message?.content ?? []) {
@@ -108,8 +123,25 @@ export function translateClaudeMessage(msg, st) {
     }
     case 'result': {
       st.finished = true;
-      if (msg.is_error) out.push({ type: 'error', message: String(msg.result || msg.subtype || '알 수 없는 오류') });
-      else out.push({ type: 'done' });
+      if (!msg.is_error) {
+        if (st.syntheticText) out.push({ type: 'text', delta: st.syntheticText }); // 오류가 아닌데 CLI가 보낸 안내는 그대로 보여 준다
+        out.push({ type: 'done' });
+        break;
+      }
+      st.failed = true;
+      const errors = Array.isArray(msg.errors) ? msg.errors.map(String).join('\n') : '';
+      const raw = String(msg.result || errors || st.syntheticText || msg.subtype || '알 수 없는 오류');
+      // 이어 말하려던 세션이 사라졌다(오래돼서 정리됐거나 폴더를 지움). 어댑터가 새 대화로 다시 시도한다.
+      if (st.resumed && NO_SESSION.test(raw)) {
+        st.sessionLost = true;
+        break;
+      }
+      if (st.apiError === 'authentication_failed' || LOGGED_OUT.test(raw)) {
+        out.push({ type: 'session', text: '로그인 세션이 만료됐어요' });
+        out.push({ type: 'error', message: `Claude Code 로그인이 풀렸어요. 터미널에서 claude를 실행해 /login으로 다시 로그인한 뒤 이어서 말해 주세요. (${raw})` });
+        break;
+      }
+      out.push({ type: 'error', message: raw });
       break;
     }
   }
@@ -216,58 +248,83 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
           '--append-system-prompt-file', personaFile,
         ];
         if (!cfg.tools) args.push('--tools', ''); // 도구를 모두 끈 대화 전용 모드
-        if (sessionId && sessionKey === key) args.push('--resume', sessionId);
 
-        /** @type {StreamState} */
-        const st = { sawDelta: false, finished: false, status: null, sessionId: null };
-        current = st;
-        queue.push({ type: 'status', state: 'thinking' });
-        st.status = 'thinking';
+        // 이어 말할 세션이 있어도 말투/도구/폴더/계정이 바뀌었으면 이을 수 없다. 조용히 새 대화가 되지 않게 표시를 남긴다.
+        if (sessionId && sessionKey !== key) {
+          queue.push({ type: 'session', text: '설정이 바뀌어서 이전 대화를 이어가지 못해요. 새 대화로 시작해요' });
+          sessionId = null;
+        }
 
-        const c = spawnCli(bin, args, { cwd: cfg.workDir, env: cleanEnv(envFor(cfg)), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-        child = c;
-        let stderr = '';
+        /**
+         * CLI를 한 번 실행한다. resume=true인데 CLI가 그 세션을 찾지 못하면(만료/삭제) 새 대화로 한 번 다시 시도한다.
+         * @param {boolean} resume
+         */
+        const launch = (resume) => {
+          /** @type {StreamState} */
+          const st = { sawDelta: false, finished: false, status: null, sessionId: null, resumed: resume };
+          current = st;
+          queue.push({ type: 'status', state: 'thinking' });
+          st.status = 'thinking';
 
-        /** @param {string} line */
-        const onLine = (line) => {
-          let m;
-          try {
-            m = JSON.parse(line);
-          } catch {
-            return; // JSON이 아닌 줄은 무시
-          }
-          // 우리가 처리하지 않는 종류의 요청에는 오류로 답해 CLI가 기다리지 않게 한다.
-          if (m?.type === 'control_request' && m.request?.subtype !== 'can_use_tool') {
-            writeLine({ type: 'control_response', response: { subtype: 'error', request_id: m.request_id, error: '지원하지 않는 요청이에요' } });
-            return;
-          }
-          for (const ev of translateClaudeMessage(m, st)) queue.push(ev);
-          if (st.finished) c.stdin?.end(); // 한 번의 대화가 끝나면 CLI가 종료되도록 입력을 닫는다
+          const c = spawnCli(bin, resume && sessionId ? [...args, '--resume', sessionId] : args, {
+            cwd: cfg.workDir,
+            env: cleanEnv(envFor(cfg)),
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          child = c;
+          let stderr = '';
+
+          /** @param {string} line */
+          const onLine = (line) => {
+            let m;
+            try {
+              m = JSON.parse(line);
+            } catch {
+              return; // JSON이 아닌 줄은 무시
+            }
+            // 우리가 처리하지 않는 종류의 요청에는 오류로 답해 CLI가 기다리지 않게 한다.
+            if (m?.type === 'control_request' && m.request?.subtype !== 'can_use_tool') {
+              writeLine({ type: 'control_response', response: { subtype: 'error', request_id: m.request_id, error: '지원하지 않는 요청이에요' } });
+              return;
+            }
+            for (const ev of translateClaudeMessage(m, st)) queue.push(ev);
+            if (st.finished) c.stdin?.end(); // 한 번의 대화가 끝나면 CLI가 종료되도록 입력을 닫는다
+          };
+
+          readLines(c.stdout, onLine);
+          c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
+          c.on('error', (e) => {
+            st.finished = true;
+            queue.push({ type: 'error', message: `claude 실행에 실패했어요: ${e.message}` });
+            queue.close();
+          });
+          c.on('close', (code) => {
+            // 오류로 끝난 대화의 세션은 이어 쓰지 않는다 (없는 세션을 계속 붙잡아 이후 대화가 모두 실패하는 것을 막는다).
+            if (st.sessionId && st.finished && !st.failed) {
+              sessionId = st.sessionId;
+              sessionKey = key;
+            }
+            child = null;
+            current = null;
+            if (st.sessionLost && !aborted) {
+              sessionId = null;
+              queue.push({ type: 'session', text: '이전 대화 세션이 만료됐어요. 새 대화로 이어가요 (앞선 내용은 기억하지 못해요)' });
+              launch(false);
+              return;
+            }
+            if (!st.finished && !aborted) {
+              queue.push(code === 0 ? { type: 'done' } : { type: 'error', message: stderr.trim().slice(-300) || `claude가 종료되었어요 (코드 ${code})` });
+            }
+            queue.close();
+          });
+
+          // 사용자 입력은 인자가 아니라 stdin(JSON 한 줄)으로만 전달한다 (인자 주입/길이 제한 방지).
+          c.stdin?.on('error', () => {});
+          writeLine({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: msg }] } });
         };
 
-        readLines(c.stdout, onLine);
-        c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
-        c.on('error', (e) => {
-          st.finished = true;
-          queue.push({ type: 'error', message: `claude 실행에 실패했어요: ${e.message}` });
-          queue.close();
-        });
-        c.on('close', (code) => {
-          if (st.sessionId && st.finished) {
-            sessionId = st.sessionId;
-            sessionKey = key;
-          }
-          if (!st.finished && !aborted) {
-            queue.push(code === 0 ? { type: 'done' } : { type: 'error', message: stderr.trim().slice(-300) || `claude가 종료되었어요 (코드 ${code})` });
-          }
-          child = null;
-          current = null;
-          queue.close();
-        });
-
-        // 사용자 입력은 인자가 아니라 stdin(JSON 한 줄)으로만 전달한다 (인자 주입/길이 제한 방지).
-        c.stdin?.on('error', () => {});
-        writeLine({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: msg }] } });
+        launch(!!sessionId);
       })();
 
       return queue;

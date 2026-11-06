@@ -233,3 +233,64 @@ out({ type: 'result', status: 'success', stats: {} });
   const off = text(await collect(createGeminiCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', web: false }) }), '질문'));
   assert.match(off, /Do not use web search/);
 });
+
+test('claude: 이어 말하던 세션이 만료되면 새 대화로 한 번 다시 시도하고 구분선 이벤트를 남긴다', { skip }, async () => {
+  // 가짜 claude: --resume이 붙어 있으면 실제 CLI처럼 "세션 없음" 오류로 끝나고, 없으면 정상 답변
+  const { cmd } = fakeCli(`
+${readFirstLine}
+const out = (o) => console.log(JSON.stringify(o));
+const i = process.argv.indexOf('--resume');
+if (i >= 0) {
+  const id = process.argv[i + 1];
+  out({ type: 'result', subtype: 'error_during_execution', is_error: true, session_id: id, errors: ['No conversation found with session ID: ' + id] });
+} else {
+  out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '새 대화 답변' } } });
+  out({ type: 'result', subtype: 'success', is_error: false, session_id: 'fresh', result: '새 대화 답변' });
+}
+`);
+  const work = tmpWork();
+  const a = createClaudeCodeAdapter({
+    getConfig: () => ({ path: cmd, tools: false, workDir: work, persona: '냥' }),
+    metaDir: path.join(work, 'meta'),
+  });
+  // 첫 대화에서 세션을 저장해 둔 상태를 만든다 (이 가짜 CLI는 --resume이 없으면 정상 답변)
+  const first = await collect(a, '첫 질문');
+  assert.equal(text(first), '새 대화 답변');
+  assert.equal(first.some((e) => e.type === 'session'), false); // 처음에는 표시가 없다
+
+  // 두 번째부터는 --resume fresh가 붙어 가짜 CLI가 "세션 없음"으로 실패한다 → 새 대화로 재시도
+  const second = await collect(a, '두 번째 질문');
+  assert.equal(second.filter((e) => e.type === 'error').length, 0); // 사용자에게 오류로 보이지 않는다
+  const marks = second.filter((e) => e.type === 'session');
+  assert.equal(marks.length, 1);
+  assert.match(/** @type {any} */ (marks[0]).text, /세션이 만료/);
+  assert.equal(text(second), '새 대화 답변'); // 같은 질문으로 새 대화가 이어서 답한다
+  assert.equal(second.at(-1)?.type, 'done');
+
+  // 죽은 세션을 계속 붙잡지 않는다: 세 번째 질문도 (다시 저장된 세션으로) 같은 흐름이며, 멈춰 있지 않다
+  const third = await collect(a, '세 번째 질문');
+  assert.equal(third.at(-1)?.type, 'done');
+});
+
+test('claude: 말투/도구 등 설정이 바뀌어 세션을 이을 수 없으면 새 대화로 시작한다는 표시를 남긴다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readFirstLine}
+const out = (o) => console.log(JSON.stringify(o));
+out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'resume=' + process.argv.includes('--resume') } } });
+out({ type: 'result', subtype: 'success', is_error: false, session_id: 's-9', result: 'ok' });
+`);
+  const work = tmpWork();
+  let persona = '냥';
+  const a = createClaudeCodeAdapter({
+    getConfig: () => ({ path: cmd, tools: false, workDir: work, persona }),
+    metaDir: path.join(work, 'meta'),
+  });
+  assert.equal(text(await collect(a, '1')), 'resume=false');
+  const same = await collect(a, '2');
+  assert.equal(text(same), 'resume=true'); // 설정이 같으면 이어 말한다
+  assert.equal(same.some((e) => e.type === 'session'), false);
+  persona = '멍'; // 말투 변경 → 이전 세션을 이을 수 없다
+  const changed = await collect(a, '3');
+  assert.equal(text(changed), 'resume=false');
+  assert.equal(changed.filter((e) => e.type === 'session').length, 1);
+});

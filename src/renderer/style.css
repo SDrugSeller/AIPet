@@ -141,6 +141,28 @@ body {
   font-size: 12px;
 }
 
+/* 대화 맥락이 끊겼다는 구분선 (세션 만료, 새 대화 시작) */
+.msg.session {
+  align-self: stretch;
+  max-width: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  background: none;
+  color: var(--bubble-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.msg.session::before,
+.msg.session::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed currentColor;
+  opacity: 0.45;
+}
+
 .msg.typing {
   color: var(--bubble-muted);
   animation: blink 1.2s infinite;

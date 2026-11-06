@@ -99,3 +99,29 @@ test('끝 이벤트 없이 스트림이 끝나면(중단) 모션을 일반 행�
   await host.send('hi');
   assert.deepEqual(anims.at(-1), [null, '']);
 });
+
+test('어댑터가 알린 세션 끊김은 대화 기록(session)에 남고 대화창에도 전달된다', async () => {
+  const { host, sent } = setup([
+    fakeAdapter('a', [{ type: 'session', text: '이전 대화 세션이 만료됐어요' }, { type: 'text', delta: '안녕' }, { type: 'done' }]),
+  ]);
+  await host.refresh();
+  await host.send('hi');
+  const log = host.snapshot().log;
+  assert.deepEqual(log.map((e) => e.role), ['user', 'session', 'assistant']);
+  assert.equal(log[1].text, '이전 대화 세션이 만료됐어요');
+  assert.ok(sent.some(([c, p]) => c === 'agent:event' && p.type === 'session'));
+});
+
+test('대화가 오간 뒤 AI 연결을 바꾸면 새 대화로 시작한다는 표시를 남긴다 (대화가 없으면 남기지 않는다)', async () => {
+  const { host, sent } = setup([fakeAdapter('a', [{ type: 'text', delta: '응' }, { type: 'done' }]), fakeAdapter('b', [{ type: 'done' }])]);
+  await host.refresh();
+  host.select('b'); // 아직 대화가 없다
+  assert.equal(host.snapshot().log.length, 0);
+  host.select('a');
+  await host.send('hi');
+  host.select('b');
+  const last = host.snapshot().log.at(-1);
+  assert.equal(last?.role, 'session');
+  assert.match(last?.text ?? '', /새 대화/);
+  assert.ok(sent.some(([c, p]) => c === 'agent:event' && p.type === 'session' && /새 대화/.test(p.text)));
+});

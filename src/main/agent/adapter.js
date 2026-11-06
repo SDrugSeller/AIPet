@@ -7,7 +7,9 @@
  *   | { type: 'tool_request', id: string, name: string, input: any }
  *   | { type: 'status', state: 'thinking' | 'working' | 'idle' }
  *   | { type: 'done' }
- *   | { type: 'error', message: string }} AgentEvent
+ *   | { type: 'error', message: string }
+ *   | { type: 'session', text: string }} AgentEvent
+ *   session: 대화 맥락이 끊겼다는 표시 (세션 만료, 설정 변경으로 새 대화 시작 등). 대화창에 구분선으로 남는다.
  */
 
 /**
