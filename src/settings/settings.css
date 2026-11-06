@@ -360,3 +360,51 @@ input.conn-name:focus {
 .card .field .inline input {
   min-width: 0;
 }
+
+/* 권한 탭: 에이전트 선택 칩 (한 번에 하나, 라디오 방식) */
+.agentPick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--muted);
+}
+
+.chip:has(input:checked) {
+  font-weight: 600;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.permPanel[hidden] {
+  display: none;
+}

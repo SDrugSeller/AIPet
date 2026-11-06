@@ -16,6 +16,7 @@
 
       <nav class="tabs" role="tablist" aria-label="설정 항목">
         <button type="button" class="tab" role="tab" id="tab-ai" aria-controls="panel-ai" aria-selected="true" tabindex="0">연결</button>
+        <button type="button" class="tab" role="tab" id="tab-perm" aria-controls="panel-perm" aria-selected="false" tabindex="-1">권한</button>
         <button type="button" class="tab" role="tab" id="tab-persona" aria-controls="panel-persona" aria-selected="false" tabindex="-1">말투</button>
         <button type="button" class="tab" role="tab" id="tab-pet" aria-controls="panel-pet" aria-selected="false" tabindex="-1">펫</button>
         <button type="button" class="tab" role="tab" id="tab-notice" aria-controls="panel-notice" aria-selected="false" tabindex="-1">알림</button>
@@ -38,35 +39,73 @@
           </div>
           <p class="muted" id="addNote"></p>
         </section>
+      </div>
 
+      <div class="panel" role="tabpanel" id="panel-perm" aria-labelledby="tab-perm" hidden>
         <section>
           <h2>권한</h2>
-          <p class="muted">
-            Claude Code 연결이 도구를 쓸 때 매번 물을지, 묻지 않고 진행할지 항목별로 고르세요. 체크한 항목은 승인 카드 없이 실행되고,
-            실행한 일은 대화창에 "자동 허용 · …" 줄로 남아요. 체크하지 않은 항목은 말풍선으로 허용 여부를 물어요.
+          <p class="hint">
+            에이전트(AI 연결 종류)를 고르면, 그 에이전트에서 고를 수 있는 권한 옵션이 나와요. 에이전트마다 지원하는 방식이 달라요.
+            같은 종류의 연결이 여럿이면 설정을 함께 써요.
           </p>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구(파일 읽기·검색)는 묻지 않고 허용</label>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowEdit" /> 파일 쓰기·수정은 묻지 않고 허용 <span class="muted">(작업 폴더 안에서만)</span></label>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowShell" data-confirm="명령 실행을 묻지 않고 허용하면, 펫(AI)이 확인 없이 이 PC에서 명령을 실행해요. 명령은 작업 폴더 밖의 파일도 지우거나 바꿀 수 있고, 검사할 수 없어요. 웹 페이지나 파일 내용에 숨은 지시를 따라 실행될 위험도 있어요.&#10;&#10;정말 묻지 않고 허용할까요?" /> 명령 실행(Bash/PowerShell)은 묻지 않고 허용 <span class="muted">(위험: 작업 폴더 밖도 건드릴 수 있어요)</span></label>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowFetch" /> 웹 페이지 가져오기는 묻지 않고 허용 <span class="muted">(주소로 정보가 새어 나갈 수 있어요)</span></label>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요)</span></label>
-          <label class="row"><input type="checkbox" data-path="permissions.codexWrite" /> <strong>Codex</strong>: 작업 폴더 안의 파일 수정·명령 실행을 묻지 않고 허용 <span class="muted">(샌드박스)</span></label>
-          <p class="muted">
-            Codex는 승인 요청을 앱으로 넘기지 못해서 "묻고 진행"이 안 돼요. 끄면 읽기 전용이고, 켜면 작업 폴더 안에서 파일 수정과 명령 실행을 바로 진행해요(파일 수정과 명령 실행을 따로 고를 수는 없어요).
-            작업 폴더 밖 쓰기(임시 폴더 제외)와 네트워크는 Codex의 샌드박스가 막지만, 파일 읽기는 막지 않아요. 실행한 명령과 파일 변경은 대화창에 "자동 허용 · … (Codex)" 줄로 남아요.
-          </p>
-          <p class="muted">웹 검색: Claude Code는 "웹 검색" 승인을 묻지 않고 허용하고, Codex는 실시간 검색을 켜고, Gemini는 검색해도 된다고 알려 줘요. 끄면 Claude Code는 매번 묻고 Codex와 Gemini에게는 검색하지 말라고 안내해요. API 키/Ollama 연결은 검색할 수 없어요.</p>
-          <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
+          <div class="agentPick" id="permAgents" role="radiogroup" aria-label="권한을 설정할 에이전트"></div>
+          <p class="muted" id="permEmpty" hidden>아직 연결이 없어요. 연결 탭에서 연결을 추가하면 여기서 권한을 설정할 수 있어요.</p>
+
+          <div class="permPanel" data-perm="claude-code" hidden>
+            <p class="muted">
+              도구(파일·명령)를 쓸 때 매번 물을지, 묻지 않고 진행할지 항목별로 고르세요. 체크한 항목은 승인 카드 없이 실행되고,
+              실행한 일은 대화창에 "자동 허용 · …" 줄로 남아요. 체크하지 않은 항목은 말풍선으로 허용 여부를 물어요.
+            </p>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구(파일 읽기·검색)는 묻지 않고 허용</label>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowEdit" /> 파일 쓰기·수정은 묻지 않고 허용 <span class="muted">(작업 폴더 안에서만)</span></label>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowShell" data-confirm="명령 실행을 묻지 않고 허용하면, 펫(AI)이 확인 없이 이 PC에서 명령을 실행해요. 명령은 작업 폴더 밖의 파일도 지우거나 바꿀 수 있고, 검사할 수 없어요. 웹 페이지나 파일 내용에 숨은 지시를 따라 실행될 위험도 있어요.&#10;&#10;정말 묻지 않고 허용할까요?" /> 명령 실행(Bash/PowerShell)은 묻지 않고 허용 <span class="muted">(위험: 작업 폴더 밖도 건드릴 수 있어요)</span></label>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowFetch" /> 웹 페이지 가져오기는 묻지 않고 허용 <span class="muted">(주소로 정보가 새어 나갈 수 있어요)</span></label>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요 · Claude Code·Codex·Gemini 공통 설정)</span></label>
+            <p class="muted">
+              작업 폴더 밖의 경로는 위 항목을 모두 체크해도 거부돼요(단, 명령 실행은 명령이 건드리는 경로를 검사할 수 없어요).
+              위 목록에 없는 도구(MCP 등)는 항상 물어요. 연결에서 도구 사용을 꺼 둔 경우에는 대화만 해서 이 설정이 쓰이지 않아요.
+              웹 검색을 끄면 Claude Code는 매번 물어요(웹 페이지 가져오기는 위 항목이 따로 정해요).
+            </p>
+          </div>
+
+          <div class="permPanel" data-perm="codex-cli" hidden>
+            <p class="muted">
+              Codex는 승인 요청을 앱으로 넘기지 못해서 "묻고 진행"이 안 돼요. 끄면 읽기 전용이고, 켜면 작업 폴더 안에서 파일 수정과 명령 실행을 바로 진행해요
+              (파일 수정과 명령 실행을 따로 고를 수는 없어요).
+            </p>
+            <label class="row"><input type="checkbox" data-path="permissions.codexWrite" /> 작업 폴더 안의 파일 수정·명령 실행을 묻지 않고 허용 <span class="muted">(샌드박스)</span></label>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요 · Claude Code·Codex·Gemini 공통 설정)</span></label>
+            <p class="muted">
+              작업 폴더 밖 쓰기(임시 폴더 제외)와 네트워크는 Codex의 샌드박스가 막지만, <strong>파일 읽기는 막지 않아요.</strong>
+              실행한 명령과 파일 변경은 대화창에 "자동 허용 · … (Codex)" 줄로 남아요. 웹 검색을 켜면 Codex의 실시간 검색을 켜고,
+              끄면 검색하지 말라고 안내해요(~/.codex 설정은 건드리지 않아요).
+            </p>
+          </div>
+
+          <div class="permPanel" data-perm="gemini-cli" hidden>
+            <p class="muted">
+              Gemini CLI는 읽기 전용(plan 모드)으로 고정돼요. 파일을 바꾸거나 명령을 실행하지 못해서, 고를 수 있는 권한은 웹 검색뿐이에요.
+            </p>
+            <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요 · Claude Code·Codex·Gemini 공통 설정)</span></label>
+            <p class="muted">켜면 검색해도 된다고, 끄면 검색하지 말라고 모델에게 안내해요(안내만 하는 것이라 강제는 아니에요).</p>
+          </div>
+
+          <div class="permPanel" data-perm="chat-only" hidden>
+            <p class="muted">
+              API와 Ollama/OpenAI 호환 연결은 대화만 해요. 파일 읽기·쓰기, 명령 실행, 웹 검색을 쓸 수 없어서 설정할 권한이 없어요.
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <h2>작업 폴더 <span class="muted">(모든 에이전트 공통)</span></h2>
+          <div class="field">펫이 파일을 읽고 쓸 수 있는 범위
             <div class="inline">
               <input type="text" id="workDir" readonly />
               <button type="button" id="pickDir">선택…</button>
               <button type="button" id="resetDir">기본값</button>
             </div>
           </div>
-          <p class="muted">
-            작업 폴더 밖의 경로는 위 항목을 모두 체크해도 거부돼요(단, 명령 실행은 명령이 건드리는 경로를 검사할 수 없어요). 위 목록에 없는 도구(MCP 등)는 항상 물어요.
-            위 항목별 선택은 Claude Code 연결에서만 쓰여요. Gemini CLI는 읽기 전용으로, API 연결은 대화만 해요.
-          </p>
         </section>
       </div>
 

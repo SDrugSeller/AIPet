@@ -93,8 +93,8 @@ const FIELDS = /** @type {Record<string, { key: string, type: 'bool' | 'text' | 
 
 /** 종류별 안내 한 줄 */
 const KIND_NOTE = /** @type {Record<string, string>} */ ({
-  'claude-code': '파일 읽기/쓰기와 명령 실행까지 할 수 있어요 (쓰기·실행은 기본으로 말풍선에서 허용해야 해요. 아래 "권한"에서 묻지 않고 허용하도록 바꿀 수 있어요).',
-  'codex-cli': '기본은 읽기 전용이에요 (파일을 바꾸지 않아요). 아래 "권한"에서 작업 폴더 안의 파일 수정·명령 실행을 허용할 수 있어요. 터미널에서 codex login으로 로그인해 두세요.',
+  'claude-code': '파일 읽기/쓰기와 명령 실행까지 할 수 있어요 (쓰기·실행은 기본으로 말풍선에서 허용해야 해요. "권한" 탭에서 묻지 않고 허용하도록 바꿀 수 있어요).',
+  'codex-cli': '기본은 읽기 전용이에요 (파일을 바꾸지 않아요). "권한" 탭에서 작업 폴더 안의 파일 수정·명령 실행을 허용할 수 있어요. 터미널에서 codex login으로 로그인해 두세요.',
   'gemini-cli': '읽기 전용(plan 모드)으로 실행돼요. 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 두세요.',
   'anthropic-api': '대화만 해요 (도구 없음). 키를 확인하는 요청은 토큰을 쓰지 않아요.',
   'openai-compat': '대화만 해요 (도구 없음). Ollama, LM Studio, OpenRouter 등 OpenAI 호환 서버를 쓸 수 있어요.',
@@ -719,6 +719,68 @@ $('#pickDir').addEventListener('click', async () => {
 
 $('#resetDir').addEventListener('click', () => save(toPatch('permissions.workDir', '')));
 
+// ---------------------------------------------------------------- 권한 탭: 에이전트를 고르면 그 에이전트의 옵션만 보여 준다
+
+/** 권한 옵션이 같은 종류끼리 하나의 화면(.permPanel[data-perm])을 쓴다 */
+const PERM_PANEL = /** @type {Record<string, string>} */ ({
+  'claude-code': 'claude-code',
+  'codex-cli': 'codex-cli',
+  'gemini-cli': 'gemini-cli',
+  'anthropic-api': 'chat-only',
+  'openai-compat': 'chat-only',
+});
+
+/** 지금 고른 에이전트 종류. 다음에 설정 창을 열 때도 기억한다. */
+let permAgent = '';
+try {
+  permAgent = localStorage.getItem('aipet.settings.permAgent') ?? '';
+} catch {
+  // 저장소를 못 써도 선택에는 문제없다
+}
+/** 선택 칩 목록이 달라졌는지 알아보는 키 (같으면 칩을 다시 만들지 않아 키보드 포커스를 지킨다) */
+let permChipsKey = '';
+
+function renderPerm() {
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const c of state.settings.connections) counts.set(c.kind, (counts.get(c.kind) ?? 0) + 1);
+  // 사용자가 실제로 추가한 연결의 종류만 고르게 한다
+  const kinds = KIND_IDS.filter((k) => counts.has(k));
+  if (!kinds.includes(/** @type {any} */ (permAgent))) permAgent = kinds[0] ?? '';
+
+  const key = kinds.map((k) => `${k}:${counts.get(k)}`).join(',');
+  const box = $('#permAgents');
+  if (key !== permChipsKey) {
+    permChipsKey = key;
+    box.replaceChildren(
+      ...kinds.map((k) => {
+        const n = counts.get(k) ?? 0;
+        const label = el('label', 'chip');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'permAgent';
+        radio.value = k;
+        radio.addEventListener('change', () => {
+          permAgent = k;
+          try {
+            localStorage.setItem('aipet.settings.permAgent', k);
+          } catch {
+            // 무시
+          }
+          renderPerm();
+        });
+        label.append(radio, el('span', '', n > 1 ? `${KINDS[k].label} ×${n}` : KINDS[k].label));
+        return label;
+      }),
+    );
+  }
+  for (const r of box.querySelectorAll('input')) /** @type {HTMLInputElement} */ (r).checked = /** @type {HTMLInputElement} */ (r).value === permAgent;
+
+  const panel = PERM_PANEL[permAgent] ?? '';
+  for (const p of document.querySelectorAll('.permPanel')) /** @type {HTMLElement} */ (p).hidden = /** @type {HTMLElement} */ (p).dataset.perm !== panel;
+  /** @type {HTMLElement} */ ($('#permEmpty')).hidden = kinds.length > 0;
+}
+
 // ---------------------------------------------------------------- 화면 그리기
 
 function render() {
@@ -732,6 +794,7 @@ function render() {
   }
 
   renderConnections();
+  renderPerm();
   renderPersona();
   renderSkinAdd();
   renderTuning();
