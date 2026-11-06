@@ -64,6 +64,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   /** 전체화면 앱/발표 중인가: 이때는 먼저 말을 걸지 않는다 */
   const quiet = { fullscreen: false };
 
+  /** 창을 hide()한 적이 있는가: 다시 보일 때 새 창으로 바꿔야 한다 (applyVisibility 참조) */
+  let windowsWereHidden = false;
   // --- 펫 한 마리의 도우미들 ---
 
   /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 @param {Pet} pet @param {number} displayId */
@@ -534,10 +536,21 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   /** 모든 오버레이 창을 보이거나 숨긴다. */
   function applyVisibility() {
     const show = visible && !suspended;
-    for (const win of windows.values()) {
-      if (win.isDestroyed()) continue;
-      if (show) win.showInactive();
-      else win.hide();
+    if (!show) {
+      for (const win of windows.values()) if (!win.isDestroyed()) win.hide();
+      windowsWereHidden = true;
+      return;
+    }
+    // hide()했다가 showInactive()로 다시 보인 창은 첫 마우스 누름(pointerdown)을 놓친다 (떼는 이벤트만 도착해
+    // 클릭이 먹지 않는다). 그래서 한 번이라도 숨겼다면 기존 창을 버리고 처음 켰을 때처럼 새 창을 만든다.
+    if (windowsWereHidden) {
+      windowsWereHidden = false;
+      for (const [id, win] of [...windows]) {
+        windows.delete(id);
+        if (!win.isDestroyed()) win.destroy();
+      }
+      for (const d of screen.getAllDisplays()) createWindow(d); // ready-to-show에서 보여 준다
+      return;
     }
   }
 
@@ -580,6 +593,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const canPerch = s.behavior.sitOnWindows && !suspended && !!info && !info.none && !!info.hwnd;
     /** @type {{ x: number, y: number, width: number, height: number } | null} */
     let rect = null;
+    for (const win of windows.values()) if (!win.isDestroyed()) win.showInactive();
     if (canPerch && info) {
       // 도우미는 물리 픽셀을 주므로 Electron의 DIP 좌표로 바꾼다 (모니터마다 배율이 다를 수 있다).
       rect = screen.screenToDipRect(null, { x: info.x ?? 0, y: info.y ?? 0, width: info.w ?? 0, height: info.h ?? 0 });

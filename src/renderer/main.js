@@ -158,7 +158,9 @@ function render(now) {
     items.push({ p, pos, anim, frame: anim ? frameOf(p, anim, now - p.state.t0) : 0, flip: isFlipped(p) });
   }
 
-  const key = items
+  // 키는 절대 빈 문자열이 되면 안 된다. lastKey = ''는 "다시 그려야 함"이라는 뜻이라서, 펫이 다른 모니터로 가서
+  // 이 창에 그릴 펫이 없을 때(키가 빈 문자열)에 지우기를 건너뛰어 이전 모습이 잔상으로 남는다.
+  const key = 'k:' + items
     .map((i) => [i.p.id, i.anim, i.frame, i.flip, i.pos.x.toFixed(1), i.pos.y.toFixed(1), !!i.p.sheets].join(','))
     .join('|') + (debug ? `|${interactive}` : '');
   if (key === lastKey) return;
