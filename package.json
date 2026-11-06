@@ -8,11 +8,38 @@
   "scripts": {
     "start": "electron .",
     "lint": "eslint .",
-    "test": "node --test --test-timeout=30000"
+    "test": "node --test --test-timeout=30000",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "author": "AIPet",
+  "build": {
+    "appId": "com.aipet.app",
+    "productName": "AIPet",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": [
+      "package.json",
+      "src/**/*",
+      "personas/**/*",
+      "skins/skin.schema.json",
+      "skins/default/**/*",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "AIPet-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "eslint": "^10.14.0",
     "globals": "^17.14.0"
   },

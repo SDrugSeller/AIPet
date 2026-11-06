@@ -14,7 +14,7 @@ export default [
     rules: { 'no-unused-vars': 'off' }, // build()는 Electron이 executeJavaScript로 호출한다
   },
   {
-    files: ['src/preload/**/*.cjs', 'tools/genba/build.cjs'],
+    files: ['src/preload/**/*.cjs', 'tools/genba/build.cjs', 'tools/make-icon.cjs'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: globals.node },
   },
   {

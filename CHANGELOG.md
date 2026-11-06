@@ -4,7 +4,15 @@
 
 ## 다음 예정
 
-[docs/DESIGN.md](docs/DESIGN.md) 12장 참고: ① 패키징(M6), ② 첫 실행 안내, ③ API 연결의 도구 루프.
+[docs/DESIGN.md](docs/DESIGN.md) 12장 참고: ① 첫 실행 안내, ② API 연결의 도구 루프. 배포 전에는 코드 서명과 제공사 약관 확인이 남아 있습니다.
+
+## 2026-11-06 — 패키징(M6)
+
+- `electron-builder`로 Windows 설치 파일(NSIS, x64)을 만듭니다: `npm run pack`(폴더만, 빠름), `npm run dist`(`dist/AIPet-Setup-<버전>.exe`).
+- 설치본에는 `src/`, `personas/`, `skins/default`, `skins/skin.schema.json`만 허용 목록으로 포함합니다. `skins/genba-cat`, `tools`, `tests`, `docs`는 들어가지 않습니다.
+- 앱 아이콘은 `tools/make-icon.cjs`로 default 스킨에서 만든 임시 `build/icon.png`입니다. 최종 캐릭터가 정해지면 교체하세요.
+- 검증(이 PC, 빈 사용자 프로필): 무인 설치 → 실행 → 말투 파일 복사, 스킨 표시(asar 안 `aipet-skin://`), 설정 창, 활성 창 감지, 실제 Claude Code 대화(think→talk→done) → 제거 후 설치 폴더·레지스트리 항목 잔여물 없음.
+- 미검증: 설치본의 "로그인 시 자동 시작" 등록(시스템 설정을 바꾸므로 확인하지 않음), 다른 PC에서의 설치, 코드 서명(없음 → SmartScreen 경고 가능).
 
 ## 2026-11-06 — 다중 연결
 

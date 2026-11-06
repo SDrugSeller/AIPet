@@ -213,7 +213,7 @@ AIPet/
 | M5 | 활성 창 인식, 창 위 걸터앉기, 자발적 발화 | 쿨다운/방해금지 동작 |
 | M5.5 | 다중 연결(연결마다 펫·스킨·말투·계정), Codex/Gemini CLI·Anthropic API 어댑터 | 완료 |
 | M5.6 | 첫 실행 안내 (아래 "첫 실행 안내" 참조) | 처음 쓰는 사용자가 안내만 보고 연결 완료 |
-| M6 | 패키징 (개인용 스킨 제외) | 설치 파일 생성 |
+| M6 | 패키징 (개인용 스킨 제외) | 설치 파일 생성. 구현·이 PC에서 설치/실행/제거 확인 완료 (12장 참조). 코드 서명·다른 PC 검증은 남음 |
 
 ## 10. 리스크 / 미결 사항
 
@@ -244,11 +244,12 @@ AIPet/
 
 ## 12. 다음 작업 (진행 순서)
 
-1. **M6 패키징** (착수 전, 조사만 마침)
-   - `electron-builder` 도입, Windows 설치 파일(NSIS). `package.json`에 `build` 설정: appId/productName, `files`에 `src/`, `skins/default`, `skins/skin.schema.json`, `personas/`, `package.json`만 포함. **`skins/genba-cat/`, `tools/`, `tests/`, `docs/`는 제외**(개인용 스킨은 절대 배포 금지).
-   - 설치본에서 확인할 것: 앱 파일이 읽기 전용 asar 안에 있으므로 (a) 스킨 경로(`skin.js`, `index.js`의 `../../skins`)와 `aipet-skin://` 프로토콜, (b) 말투 기본 파일 복사(`seedDir`), (c) 트레이 아이콘(스킨 시트를 잘라 씀), (d) 상주 PowerShell 도우미(`windowWatcher.js`, -EncodedCommand라 파일 의존 없음), (e) 로그인 시 자동 시작(`app.isPackaged`일 때만 적용), (f) `claude`/`codex`/`gemini` 실행 파일 탐색이 설치본에서도 동작하는지.
-   - 앱 아이콘(.ico) 필요. 사용자가 스킨을 추가할 폴더가 asar 밖(`%APPDATA%/aipet/skins` 등)에도 있어야 하는지 결정.
-   - 완료 기준: 깨끗한 사용자 프로필에서 설치 → 실행 → 연결 → 대화까지 확인. 확인 전에는 "배포 가능"이라고 하지 않는다.
+1. **M6 패키징** — 구현 완료, 이 PC에서 검증함 (남은 것은 아래 "남은 확인")
+   - `electron-builder` 도입. `npm run pack`(폴더만) / `npm run dist`(NSIS 설치 파일, `dist/AIPet-Setup-<버전>.exe`). 설정은 `package.json`의 `build`: `files`를 허용 목록으로 지정(`src/`, `personas/`, `skins/default`, `skins/skin.schema.json`). **`skins/genba-cat/`, `tools/`, `tests/`, `docs/`는 포함되지 않는다**(asar 목록으로 확인. 단 이 작업 폴더에는 genba-cat이 원래 없어서, 있을 때의 제외는 허용 목록 구조로만 보장됨).
+   - 확인한 것 (빈 프로필, 무인 설치): (a) 스킨 경로와 `aipet-skin://` 프로토콜 정상, (b) 말투 기본 파일 복사 정상, (c) 트레이/아이콘 생성 정상, (d) 상주 PowerShell 도우미 정상(활성 창 감지 로그 확인), (f) `claude` 탐색 정상(VS Code 확장 바이너리) 및 실제 대화 think→talk→done, 설정 창 표시. 제거 후 설치 폴더와 레지스트리 항목 잔여물 없음.
+   - 아이콘은 default 스킨에서 만든 임시 `build/icon.png`(`npx electron tools/make-icon.cjs`). 최종 캐릭터가 정해지면 교체.
+   - 개발 환경 주의: 셸에 `ELECTRON_RUN_AS_NODE=1`이 설정돼 있으면(예: VS Code 터미널) `npx electron`/`electron-builder` 실행이 일반 Node로 동작해 실패한다. `env -u ELECTRON_RUN_AS_NODE`로 해제하고 실행한다.
+   - **남은 확인**: (e) 설치본의 "로그인 시 자동 시작" 등록(시스템 설정을 바꿔서 확인하지 않음), **코드 서명 없음**(SmartScreen 경고, 배포 시 인증서 필요), 다른 PC·깨끗한 계정에서의 설치, 자동 업데이트 없음, macOS 빌드는 미작업. (사용자 스킨 폴더는 구현함: 5.4 "스킨 위치")
 2. **첫 실행 안내** (11장): 연결 종류 선택(구독/API 키/무료·로컬), 종류별 설치·로그인 단계, CLI 자동 감지, Gemini 무료 키 프리셋. Gemini CLI 안내 문구 재검토.
 3. **API 연결의 도구 루프** (후순위, 규모 큼): 현재 Anthropic API/OpenAI 호환 연결은 대화만 가능하다. 앱이 읽기/검색/쓰기/명령 도구를 정의하고 작업 폴더 안에서만 실행하며, 쓰기·명령은 기존 승인 카드로 묻는다. 어댑터별 도구 호출 형식 변환과 경로 검증 테스트가 필요하다. 이후 Codex/Gemini CLI의 읽기 전용 제한 해제(각 CLI의 승인 프로토콜 검증 후)도 검토.
 4. 알려진 제약: 쉬기/정시 알림은 첫 번째 펫만 말함, 펫끼리 겹침 회피 없음, 외부 서버/계정과의 실제 통신은 가짜 서버 기반으로만 검증, 구독 계정의 CLI 호출이 각 제공사 약관에 맞는지 미확인.
