@@ -43,7 +43,7 @@ export function createConfig({ store, personas, userDataDir, env = process.env }
 
     policy() {
       const p = store.get().permissions;
-      return { autoAllowRead: p.autoAllowRead, workDir: p.workDir || defaultWorkDir };
+      return { autoAllowRead: p.autoAllowRead, autoAllowWeb: p.autoAllowWeb, workDir: p.workDir || defaultWorkDir };
     },
 
     /** @param {string} id */
@@ -65,12 +65,12 @@ export function createConfig({ store, personas, userDataDir, env = process.env }
 
     /** @param {string} id */
     codex(id) {
-      return { path: opt(id, 'path'), model: opt(id, 'model'), workDir: this.workDir(), persona: persona(id) };
+      return { path: opt(id, 'path'), model: opt(id, 'model'), workDir: this.workDir(), persona: persona(id), web: store.get().permissions.autoAllowWeb };
     },
 
     /** @param {string} id */
     gemini(id) {
-      return { path: opt(id, 'path'), model: opt(id, 'model'), workDir: this.workDir(), persona: persona(id) };
+      return { path: opt(id, 'path'), model: opt(id, 'model'), workDir: this.workDir(), persona: persona(id), web: store.get().permissions.autoAllowWeb };
     },
 
     /** @param {string} id */

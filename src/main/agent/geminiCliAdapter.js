@@ -120,7 +120,7 @@ export function createGeminiCliAdapter({ getConfig }) {
           return queue.close();
         }
         fs.mkdirSync(cfg.workDir, { recursive: true });
-        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, 'readonly'), history, message: msg });
+        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, 'readonly', { web: cfg.web }), history, message: msg });
         // 긴 프롬프트는 stdin으로 보내고, -p에는 짧은 값만 준다 (stdin 뒤에 덧붙는다).
         const args = ['-p', 'Please respond.', '--output-format', 'stream-json', '--approval-mode', 'plan', '--skip-trust'];
         if (cfg.model) args.push('-m', cfg.model);

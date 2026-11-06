@@ -17,6 +17,11 @@ export const DEFAULTS = {
   permissions: {
     /** 읽기 전용 도구(Read/Glob/Grep 등)는 묻지 않고 허용 */
     autoAllowRead: true,
+    /**
+     * 웹 검색 허용. Claude Code: "웹 검색" 승인 카드를 자동 허용(페이지 가져오기 WebFetch는 계속 묻는다),
+     * Codex: 실시간 웹 검색 켜기, Gemini: 검색 허용 안내. 기본은 꺼짐(검색어가 외부로 나가므로).
+     */
+    autoAllowWeb: false,
     /** 에이전트가 접근할 수 있는 작업 폴더. 비어 있으면 앱 전용 폴더 */
     workDir: '',
   },
@@ -97,7 +102,7 @@ const skinTuning = (v) =>
 const SPEC = {
   connections: validateConnections,
   skinTuning,
-  permissions: { autoAllowRead: isBool, workDir: str(1000) },
+  permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, workDir: str(1000) },
   behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
   spontaneous: {
     enabled: isBool,

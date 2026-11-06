@@ -42,6 +42,8 @@
         <section>
           <h2>권한</h2>
           <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요)</span></label>
+          <p class="muted">Claude Code는 "웹 검색" 승인을 묻지 않고 허용하고(웹 페이지 가져오기는 계속 물어요), Codex는 실시간 검색을 켜고, Gemini는 검색해도 된다고 알려 줘요. 끄면 Claude Code는 매번 묻고 Codex와 Gemini에게는 검색하지 말라고 안내해요. API 키/Ollama 연결은 검색할 수 없어요.</p>
           <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
             <div class="inline">
               <input type="text" id="workDir" readonly />
@@ -50,7 +52,7 @@
             </div>
           </div>
           <p class="muted">
-            파일 쓰기, 명령 실행, 네트워크 접근은 항상 말풍선으로 허용 여부를 물어요. 작업 폴더 밖의 경로는 거부돼요.
+            파일 쓰기, 명령 실행, 웹 페이지 가져오기는 항상 말풍선으로 허용 여부를 물어(웹 검색은 위에서 허용할 수 있어)요. 작업 폴더 밖의 경로는 거부돼요.
             이 승인은 Claude Code 연결에서만 쓰여요. Codex·Gemini CLI는 읽기 전용으로, API 연결은 대화만 해요.
           </p>
         </section>

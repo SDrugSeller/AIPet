@@ -116,9 +116,11 @@ export function createCodexCliAdapter({ getConfig }) {
           return queue.close();
         }
         fs.mkdirSync(cfg.workDir, { recursive: true });
-        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, 'readonly'), history, message: msg });
+        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, 'readonly', { web: cfg.web }), history, message: msg });
         const args = ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only'];
         if (cfg.model) args.push('-m', cfg.model);
+        // 웹 검색 허용: 읽기 전용 샌드박스 그대로 모델의 web_search 도구만 켠다. 꺼져 있으면 사용자의 codex 설정을 건드리지 않는다.
+        if (cfg.web) args.push('-c', 'web_search="live"');
         args.push('-'); // 프롬프트는 stdin으로 (인자 주입/길이 제한 방지)
 
         /** @type {CodexState} */

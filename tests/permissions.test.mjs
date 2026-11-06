@@ -75,3 +75,17 @@ test('describeRequest: 사용자가 무엇을 허용하는지 보여 준다', ()
   // 긴 내용은 잘린다
   assert.ok(describeRequest('Bash', { command: 'x'.repeat(5000) }).detail.length < 700);
 });
+
+test('웹 검색: 기본은 묻고, 설정을 켜면 자동 허용한다', () => {
+  const search = { name: 'WebSearch', input: { query: '오늘 날씨' } };
+  assert.equal(decide(search, policy).action, 'ask');
+  assert.equal(decide(search, { ...policy, autoAllowWeb: false }).action, 'ask');
+  assert.deepEqual(decide(search, { ...policy, autoAllowWeb: true }), { action: 'allow' });
+});
+
+test('웹 검색을 허용해도 페이지 가져오기(WebFetch)와 다른 위험한 도구는 계속 묻는다', () => {
+  const on = { ...policy, autoAllowWeb: true };
+  assert.equal(decide({ name: 'WebFetch', input: { url: 'https://example.com' } }, on).action, 'ask');
+  assert.equal(decide({ name: 'Bash', input: { command: 'curl x' } }, on).action, 'ask');
+  assert.equal(decide({ name: 'Write', input: { file_path: path.join(work, 'a.txt'), content: 'x' } }, on).action, 'ask');
+});

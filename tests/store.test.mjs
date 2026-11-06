@@ -41,6 +41,7 @@ test('저장한 설정은 다시 열어도 유지된다 (재시작 후 설정 �
   assert.equal(b.get().permissions.workDir, 'D:\\work');
   assert.equal(b.get().general.sound, false);
   assert.equal(b.get().permissions.autoAllowRead, true); // 건드리지 않은 값은 그대로
+  assert.equal(b.get().permissions.autoAllowWeb, false); // 웹 검색 허용은 기본 꺼짐
 });
 
 test('일부만 바꿔도 같은 그룹의 다른 값은 유지된다', () => {

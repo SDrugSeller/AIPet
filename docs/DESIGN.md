@@ -92,6 +92,7 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 - 파일 쓰기/명령 실행/네트워크: 펫이 말풍선으로 승인 요청 → 사용자 허용/거부
 - CLI 어댑터는 CLI의 권한 요청을 `tool_request`로 중계하고 `respondPermission`으로 응답을 전달한다. API 어댑터는 앱이 직접 게이트한다.
 - 허용 범위(작업 디렉터리)를 설정에서 지정
+- 웹 검색은 설정(`permissions.autoAllowWeb`, 기본 꺼짐)으로 허용: Claude Code는 `WebSearch` 승인을 자동 허용(`WebFetch`는 계속 묻는다), Codex는 `-c web_search="live"`, Gemini는 plan 모드의 검색 허용을 시스템 프롬프트로 안내(강제 아님). API/Ollama 연결은 도구가 없어 불가.
 
 **구현 메모 (M4, Claude Code)**: `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`로 실행하면 CLI가 도구 사용 전에 stdout으로 `control_request`(`subtype: can_use_tool`, `tool_name`, `input`)를 보내고, 앱이 stdin으로 `control_response`(`behavior: allow|deny`)를 돌려준다. `--setting-sources project,local`로 사용자 전역 허용 규칙이 승인 절차를 우회하지 못하게 한다. 이 프로토콜은 공식 SDK가 쓰는 방식이지만 CLI 버전에 따라 바뀔 수 있으므로 CLI 업데이트 시 `tests/claudeTranslate.test.mjs`와 실제 실행으로 재검증한다.
 

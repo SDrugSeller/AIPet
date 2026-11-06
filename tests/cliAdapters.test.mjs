@@ -200,3 +200,36 @@ test('경로를 직접 지정했는데 파일이 없으면 다른 곳을 뒤지�
     assert.match(d.reason ?? '', /지정한 경로/);
   }
 });
+
+test('codex: 웹 검색 허용을 켜면 -c web_search="live"와 검색 허용 안내를 붙이고, 끄면 붙이지 않는다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readStdin}
+const out = (o) => console.log(JSON.stringify(o));
+out({ type: 'item.completed', item: { type: 'agent_message', text: 'ARGS=' + process.argv.slice(2).join(' ') + ' | STDIN=' + input.replace(/\\n/g, ' / ') } });
+out({ type: 'turn.completed', usage: {} });
+`);
+  const work = tmpWork();
+  const on = text(await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', web: true }) }), '질문'));
+  assert.match(on, /-c web_search="live" -/);
+  assert.match(on, /--sandbox read-only/); // 검색을 켜도 읽기 전용은 그대로
+  assert.match(on, /You may use web search/);
+  const off = text(await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', web: false }) }), '질문'));
+  assert.doesNotMatch(off, /web_search/);
+  assert.match(off, /Do not use web search/);
+});
+
+test('gemini: 웹 검색 허용 여부를 시스템 프롬프트로 알려 준다 (실행 옵션은 그대로 plan 모드)', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readStdin}
+const out = (o) => console.log(JSON.stringify(o));
+const reply = 'ARGS=' + process.argv.slice(2).join(' ') + ' | STDIN=' + input.replace(/\\n/g, ' / ');
+out({ type: 'message', role: 'assistant', content: reply, delta: true });
+out({ type: 'result', status: 'success', stats: {} });
+`);
+  const work = tmpWork();
+  const on = text(await collect(createGeminiCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', web: true }) }), '질문'));
+  assert.match(on, /--approval-mode plan/);
+  assert.match(on, /You may use web search/);
+  const off = text(await collect(createGeminiCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', web: false }) }), '질문'));
+  assert.match(off, /Do not use web search/);
+});

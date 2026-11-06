@@ -2,12 +2,17 @@
 // 도구 실행 권한 정책 (DESIGN.md 4.4).
 //  - 작업 폴더 밖의 경로는 거부
 //  - 읽기 전용 도구는 설정에 따라 자동 허용
+//  - 웹 검색(WebSearch)은 설정(autoAllowWeb)에 따라 자동 허용. 페이지 가져오기(WebFetch)는 주소로 정보가 새어 나갈 수
+//    있어서 항상 묻는다
 //  - 그 외(파일 쓰기, 명령 실행, 네트워크)는 사용자에게 묻는다
 import fs from 'node:fs';
 import path from 'node:path';
 
 /** 파일을 바꾸지 않는 도구 */
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead']);
+
+/** 설정으로 자동 허용할 수 있는 웹 도구: 검색만 (검색어만 나간다) */
+const WEB_SEARCH_TOOLS = new Set(['WebSearch']);
 
 /** 입력에서 경로로 취급하는 키 */
 const PATH_KEYS = ['file_path', 'path', 'notebook_path'];
@@ -37,10 +42,10 @@ export function isInside(root, target) {
 /**
  * @typedef {{ action: 'allow' | 'deny' | 'ask', reason?: string }} Decision
  * @param {{ name: string, input: any }} req
- * @param {{ autoAllowRead: boolean, workDir: string }} policy
+ * @param {{ autoAllowRead: boolean, autoAllowWeb?: boolean, workDir: string }} policy
  * @returns {Decision}
  */
-export function decide({ name, input }, { autoAllowRead, workDir }) {
+export function decide({ name, input }, { autoAllowRead, autoAllowWeb, workDir }) {
   for (const key of PATH_KEYS) {
     const p = input?.[key];
     if (typeof p === 'string' && p && !isInside(workDir, path.resolve(workDir, p))) {
@@ -48,6 +53,7 @@ export function decide({ name, input }, { autoAllowRead, workDir }) {
     }
   }
   if (autoAllowRead && READ_ONLY_TOOLS.has(name)) return { action: 'allow' };
+  if (autoAllowWeb && WEB_SEARCH_TOOLS.has(name)) return { action: 'allow' };
   return { action: 'ask' };
 }
 
