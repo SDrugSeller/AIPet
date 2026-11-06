@@ -6,6 +6,13 @@
 
 [docs/DESIGN.md](docs/DESIGN.md) 12장 참고: ① 첫 실행 안내, ② API 연결의 도구 루프. 배포 전에는 코드 서명과 제공사 약관 확인이 남아 있습니다.
 
+## 2026-11-06 — Gemini 개인 계정 이용 종료 오류 안내
+
+- 증상: Gemini CLI 연결로 질문하면 "Warning: 256-color support not detected… Error authenticating: IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals…"가 그대로 나왔습니다.
+- 원인: 앱의 문제가 아니라 **Google이 2026-06-18부터 개인 Google 계정의 Gemini CLI 이용을 종료**하고 Antigravity CLI로 대체한 것입니다 (2차 자료 기준, 오류 문구 자체는 공식 문서로 확인하지 못함).
+- 수정: 이 오류를 "Google이 개인 Google 계정의 Gemini CLI 이용을 종료했어요 … GEMINI_API_KEY로 인증하거나, 이 연결을 끄고 다른 연결을 써 주세요"로 바꿔 보여 주고, 터미널 색상 경고는 오류에서 걷어 냅니다. 연결 카드의 "로그인된 Google 계정" 표시에도 같은 주의를 덧붙였습니다.
+- 한계: **Gemini를 다시 쓸 수 있게 만든 것은 아닙니다.** GEMINI_API_KEY로 계속 쓸 수 있는지는 이 PC에 CLI가 없어 확인하지 못했습니다. Antigravity CLI(`agy`) 연결은 아직 만들지 않았습니다.
+
 ## 2026-11-06 — 웹 검색 허용 옵션 (Claude Code, Codex, Gemini)
 
 - 설정 → 권한에 **"웹 검색 허용"**(기본 꺼짐)을 추가했습니다. 연결 종류마다 방식이 다릅니다.

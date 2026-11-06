@@ -33,6 +33,12 @@ function authHint() {
 
 /** 사용자에게 보여 줄 오류 문장으로 다듬는다 (CLI의 오류는 JSON 문자열이 통째로 들어올 때가 많다). @param {string} raw */
 export function friendlyGeminiError(raw) {
+  // 터미널 색상 경고는 오류와 상관없는 소음이다 (CLI가 stderr에 같이 내보낸다)
+  raw = raw.replace(/Warning:\s*256-color support not detected\.[^.]*\./gi, '').trim();
+  // 2026-06-18부터 개인 Google 계정으로는 Gemini CLI를 쓸 수 없다 (Antigravity CLI로 대체). 로그인과는 다른 문제라 따로 안내한다.
+  if (/IneligibleTierError|no longer supported for Gemini Code Assist|migrate to/i.test(raw)) {
+    return 'Google이 개인 Google 계정의 Gemini CLI 이용을 종료했어요 (2026-06-18부터 Antigravity CLI로 대체). GEMINI_API_KEY로 인증하거나, 이 연결을 끄고 다른 연결을 써 주세요.';
+  }
   if (/API key not valid|API_KEY_INVALID/i.test(raw)) return 'Gemini API 키가 올바르지 않아요.';
   if (/Please set an Auth method|authentication|not logged in/i.test(raw)) return 'Gemini에 로그인되어 있지 않아요. 터미널에서 gemini를 실행해 로그인하거나 GEMINI_API_KEY를 설정해 주세요.';
   if (/quota|RESOURCE_EXHAUSTED|429/i.test(raw)) return 'Gemini 사용량 한도에 걸렸어요. 잠시 뒤에 다시 시도해 주세요.';
@@ -104,7 +110,9 @@ export function createGeminiCliAdapter({ getConfig }) {
       if (v.code !== 0) return { ok: false, reason: `gemini 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
       // gemini에는 로그인 상태를 알려 주는 명령이 없다. 흔적이 없어도 다른 방식으로 설정했을 수 있어 막지는 않는다.
       const auth = authHint();
-      const authLine = auth ? `인증: ${auth}` : '로그인 상태를 확인하지 못했어요 (안 되면 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 주세요)';
+      const authLine = auth
+        ? `인증: ${auth}${auth === '로그인된 Google 계정' ? ' (개인 계정은 2026-06-18부터 Gemini CLI를 쓸 수 없어요 — 안 되면 GEMINI_API_KEY를 쓰세요)' : ''}`
+        : '로그인 상태를 확인하지 못했어요 (안 되면 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 주세요)';
       return { ok: true, info: `gemini ${v.stdout.trim()} · ${bin}\n${authLine}\n읽기 전용(plan 모드)으로 실행돼요` };
     },
 

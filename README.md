@@ -33,7 +33,7 @@ npm run dist     # dist/AIPet-Setup-<버전>.exe (NSIS 설치 파일)
 - **설정**(메뉴 → 설정…, 탭: 연결 / 말투 / 펫 / 알림 / 일반): 연결 목록(종류, 이름, 스킨, 말투, 경로/주소/모델/API 키, 도구 사용), 작업 폴더, 알림음, 로그인 시 자동 시작. 값은 바꾸는 즉시 저장되고 재시작해도 유지됩니다 (`%APPDATA%/aipet/settings.json`). 예전 형식의 설정은 자동으로 변환됩니다.
 - 연결 종류 (같은 종류를 여러 개 만들 수 있습니다):
   - **Claude Code**: 공식 `claude` CLI를 설치하고 터미널에서 한 번 로그인해 두면 자동으로 감지합니다. (설정에서 지정한 경로 → PATH → 공식 설치 위치 → VS Code Claude Code 확장에 포함된 바이너리 순으로 탐색) 어떤 계정인지 설정 화면에 표시됩니다. **계정을 여러 개** 쓰려면 연결마다 "계정 설정 폴더"를 다르게 지정하세요(`CLAUDE_CONFIG_DIR`로 전달됨). "자동 지정"으로 폴더를 만들고, "로그인 명령 복사"로 받은 명령을 터미널에 붙여 그 계정으로 로그인하면 됩니다. 파일/명령 도구와 권한 승인 카드를 지원하는 유일한 종류입니다.
-  - **Codex CLI**, **Gemini CLI**: 각 공식 CLI를 설치·로그인해 두면 쓸 수 있습니다. **읽기 전용**(Codex `-s read-only`, Gemini `--approval-mode plan`)이라 파일을 고치거나 명령을 실행하지 않습니다. 대화 기록은 앱이 매번 프롬프트에 이어 붙입니다.
+  - **Codex CLI**, **Gemini CLI**: 각 공식 CLI를 설치·로그인해 두면 쓸 수 있습니다. **주의: Google이 2026-06-18부터 개인 Google 계정(무료·Pro·Ultra)의 Gemini CLI 이용을 종료하고 Antigravity CLI로 대체했습니다.** 개인 계정 로그인으로는 "IneligibleTierError" 같은 오류가 나며, 이때는 `GEMINI_API_KEY`로 인증하거나 다른 연결을 쓰세요. (Antigravity CLI 연결은 아직 지원하지 않습니다.) **읽기 전용**(Codex `-s read-only`, Gemini `--approval-mode plan`)이라 파일을 고치거나 명령을 실행하지 않습니다. 대화 기록은 앱이 매번 프롬프트에 이어 붙입니다.
   - **Anthropic API**: 공식 SDK(`@anthropic-ai/sdk`)로 스트리밍 대화. API 키 + 모델(기본 `claude-opus-5-5`)을 입력합니다. 대화 전용.
   - **Ollama / OpenAI 호환**: 기본 주소 `http://127.0.0.1:11434/v1`. 모델을 지정하지 않으면 서버의 첫 모델을 씁니다. 대화 전용.
   - API 키는 연결마다 OS 보안 저장소(Electron `safeStorage`)에 암호화해 저장하며, 보안 저장소를 쓸 수 없으면 저장하지 않습니다.

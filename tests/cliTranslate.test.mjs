@@ -133,6 +133,16 @@ test('gemini 오류 문장: 로그인 안내, 한도, 그 외는 안쪽 메시�
   assert.ok(friendlyGeminiError('x'.repeat(1000)).length <= 301);
 });
 
+test('friendlyGeminiError: 개인 계정 이용 종료 안내와 색상 경고 제거', () => {
+  const real = 'Warning: 256-color support not detected. Using a terminal with at least 256-color support is recommended for a better visual experience. Error authenticating: IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the new CLI.';
+  const msg = friendlyGeminiError(real);
+  assert.match(msg, /개인 Google 계정/);
+  assert.match(msg, /Antigravity/);
+  assert.doesNotMatch(msg, /256-color|IneligibleTierError/);
+  // 오류가 아닌 문장에서도 색상 경고만 걷어 낸다
+  assert.equal(friendlyGeminiError('Warning: 256-color support not detected. Using a terminal with at least 256-color support is recommended for a better visual experience. 모델이 과부하예요'), '모델이 과부하예요');
+});
+
 test('composePrompt: 지침, 이전 대화, 새 메시지를 한 프롬프트로 합친다', () => {
   const p = composePrompt({
     system: '말끝에 냥을 붙여',
