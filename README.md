@@ -75,6 +75,12 @@ npm run dist     # dist/AIPet-Setup-<버전>.exe (NSIS 설치 파일)
   - 받은 스킨의 그림은 만든 사람에게 권리가 있습니다. 출처와 이용 조건을 확인하고 쓰세요.
 - `default`: 임시 콩 캐릭터 (`node tools/gen-placeholder-skin.mjs`로 생성).
 
+- `genba-cat`: **개인용이며 저장소에 포함되지 않습니다**(`.gitignore`, 커밋 기록에서도 제거). 직접 쓰려면 `skins/genba-cat/source.webp`에 원본 이미지를 두고 `tools/genba`로 만듭니다. 패키징/배포 때도 제외해야 합니다. 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
+  - 배경을 지우고, 몸을 격자 메시로 덮어 관절(머리, 팔, 다리, 꼬리, 입, 눈)만 휘게 해서 idle/walk/drag/drop/sleep/think/work/talk/done/error/attention 시트를 만듭니다. 새 포즈를 그린 것이 아니라 한 장을 변형한 것이라 움직임은 단순합니다.
+  - 완료(done) 모션에서는 원본에 있던 "ヨシ!" 글자를 외칩니다.
+  - 다시 만들려면 `npx electron tools/genba/build.cjs` (움직임 조정은 `tools/genba/page.js`). 더 나은 시트(직접 그리거나 생성한 그림)가 생기면 같은 파일명의 PNG로 교체하면 됩니다.
+  - **저작권**: 원본 이미지의 권리는 원작자에게 있습니다. 개인 사용을 전제로 했으며, 재배포 전에 확인이 필요합니다 (`skin.json`의 `license` 참고).
+
 ### 애니메이션 속도(fps) 참고표
 
 기본 스킨(`skins/default/skin.json`)의 값입니다. 스킨을 만들 때 기준으로 삼으세요. 속도는 설정 창에서 바꿀 수 없고 `skin.json`의 `fps`/`frames`로만 정합니다.
@@ -99,8 +105,3 @@ npm run dist     # dist/AIPet-Setup-<버전>.exe (NSIS 설치 파일)
 - 움직임이 큰 동작(걷기, 작업, 완료, 착지, 클릭 반응)은 **10fps**, 보통 동작은 **6~8fps**, 잠은 **3fps**입니다. 한 바퀴 시간은 `프레임 수 ÷ fps`입니다.
 - 허용 범위는 fps 0.1~60, 프레임 수 1~64입니다 (사용자가 추가한 스킨 기준). 시트는 가로 1줄이고 너비 = 프레임 너비 × 프레임 수입니다.
 - fps만 올리면 같은 그림이 더 빨리 반복될 뿐이라, 더 부드럽게 하려면 프레임 수도 늘려 그림을 다시 만들어야 합니다.
-- `genba-cat`: **개인용이며 저장소에 포함되지 않습니다**(`.gitignore`, 커밋 기록에서도 제거). 직접 쓰려면 `skins/genba-cat/source.webp`에 원본 이미지를 두고 `tools/genba`로 만듭니다. 패키징/배포 때도 제외해야 합니다. 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
-  - 배경을 지우고, 몸을 격자 메시로 덮어 관절(머리, 팔, 다리, 꼬리, 입, 눈)만 휘게 해서 idle/walk/drag/drop/sleep/think/work/talk/done/error/attention 시트를 만듭니다. 새 포즈를 그린 것이 아니라 한 장을 변형한 것이라 움직임은 단순합니다.
-  - 완료(done) 모션에서는 원본에 있던 "ヨシ!" 글자를 외칩니다.
-  - 다시 만들려면 `npx electron tools/genba/build.cjs` (움직임 조정은 `tools/genba/page.js`). 더 나은 시트(직접 그리거나 생성한 그림)가 생기면 같은 파일명의 PNG로 교체하면 됩니다.
-  - **저작권**: 원본 이미지의 권리는 원작자에게 있습니다. 개인 사용을 전제로 했으며, 재배포 전에 확인이 필요합니다 (`skin.json`의 `license` 참고).
