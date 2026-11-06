@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('aipet', {
   permRespond: (/** @type {string} */ petId, /** @type {string} */ id, /** @type {boolean} */ allow) =>
     ipcRenderer.send('perm:respond', petId, id, allow),
   /** 알림 말풍선의 버튼: 'open'(대화하기) | 'close' */
-  noticeAction: (/** @type {string} */ petId, /** @type {'open' | 'close'} */ a) => ipcRenderer.send('notice:action', petId, a),
+  noticeAction: (/** @type {string} */ petId, /** @type {'open' | 'close' | 'settings'} */ a) => ipcRenderer.send('notice:action', petId, a),
 
   /** 펫 목록이 바뀌었다 (연결 추가/삭제/켜기/끄기, 이름·스킨 변경) */
   onPetsSync: (/** @type {(list: any[]) => void} */ cb) => on('pets:sync', cb),

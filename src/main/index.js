@@ -78,6 +78,7 @@ if (!app.requestSingleInstanceLock()) {
       // AIPET_SKIN을 주면 모든 연결이 그 스킨을 쓴다 (디버그/검증용)
       loadSkin: (name, tuning) => loadSkin(process.env.AIPET_SKIN || name, tuning),
       getMenuTemplate,
+      openSettings: (tab) => settings.open(tab),
     });
 
     settings = createSettingsWindow({

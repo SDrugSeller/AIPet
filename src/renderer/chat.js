@@ -169,9 +169,12 @@ export function createChat(api, pet, layer, template) {
   // 알림 말풍선의 버튼
   /** @param {string} sel */
   const nq = (sel) => /** @type {HTMLElement} */ (notice.querySelector(sel));
-  nq('.notice-open').addEventListener('click', () => api.noticeAction(petId, 'open'));
+  // 설정 안내(kind 'setup')는 "대화하기" 대신 "설정 열기"로 이어진다
+  let noticeKind = '';
+  const noticeAct = () => api.noticeAction(petId, noticeKind === 'setup' ? 'settings' : 'open');
+  nq('.notice-open').addEventListener('click', noticeAct);
   nq('.notice-close').addEventListener('click', () => api.noticeAction(petId, 'close'));
-  noticeText.addEventListener('click', () => api.noticeAction(petId, 'open')); // 말풍선을 누르면 대화로 이어진다
+  noticeText.addEventListener('click', noticeAct); // 말풍선을 누르면 대화(또는 설정)로 이어진다
 
   // 처음 열린 창에 이미 있는 대화 기록
   for (const e of pet.chat.log) addMessage(e.role, e.text);
@@ -215,8 +218,10 @@ export function createChat(api, pet, layer, template) {
     handlePermRequest: addPermCard,
     handlePermResolved: resolvePermCard,
 
-    /** @param {{ text: string }} n */
+    /** @param {{ text: string, kind?: string }} n */
     showNotice(n) {
+      noticeKind = n.kind ?? '';
+      nq('.notice-open').textContent = noticeKind === 'setup' ? '설정 열기' : '대화하기';
       noticeText.textContent = n.text;
       noticeWanted = true;
       layoutKey = '';

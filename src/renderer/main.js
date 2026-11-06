@@ -288,6 +288,7 @@ function upsertPet(d) {
     p = { id: d.id, name: d.name, skin: d.skin, skinKey, sheets: null, state: d.state, chat: createChat(api, d, layer, template) };
     pets.set(d.id, p);
     drawOrder.push(d.id);
+    if (d.notice) p.chat.showNotice(d.notice); // 창이 열리기 전에 뜬 알림(설정 안내 등)도 보여 준다
   } else {
     p.name = d.name;
     p.chat.setName(d.name);

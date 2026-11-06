@@ -5,6 +5,7 @@ import { createAgentHost } from './agent/agentHost.js';
 import { createAdapterFor } from './agent/factory.js';
 import { bodyMetrics, computePerch } from './perch.js';
 import { createPetEngine } from './petEngine.js';
+import { needsSetupHint, SETUP_HINT_TEXT } from './setupHint.js';
 import { createNotifier } from './spontaneous.js';
 import { createWindowWatcher } from './windowWatcher.js';
 
@@ -23,9 +24,10 @@ import { createWindowWatcher } from './windowWatcher.js';
  *   config: ReturnType<typeof import('./config.js').createConfig>,
  *   loadSkin: (name: string, tuning?: any) => Promise<any>,
  *   getMenuTemplate: (petId?: string) => Electron.MenuItemConstructorOptions[],
+ *   openSettings: (tab?: string) => void,
  * }} opts
  */
-export function createOverlayManager({ preloadPath, rendererPath, debug, store, config, loadSkin, getMenuTemplate }) {
+export function createOverlayManager({ preloadPath, rendererPath, debug, store, config, loadSkin, getMenuTemplate, openSettings }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
 
@@ -41,6 +43,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
    *   fingerprint: string,
    *   optionsKey: string,
    *   noticeActive: boolean,
+   *   noticeInfo: { text: string, kind: string } | null,
    *   noticeTimer: NodeJS.Timeout | null,
    * }} Pet
    */
@@ -61,11 +64,11 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   let visible = store.get().general.visible;
   /** 전체화면 앱이 활성이라 잠시 숨겨 둔 상태 (사용자가 정한 visible 설정과는 별개) */
   let suspended = false;
+  /** 창을 hide()한 적이 있는가: 다시 보일 때 새 창으로 바꿔야 한다 (applyVisibility 참조) */
+  let windowsWereHidden = false;
   /** 전체화면 앱/발표 중인가: 이때는 먼저 말을 걸지 않는다 */
   const quiet = { fullscreen: false };
 
-  /** 창을 hide()한 적이 있는가: 다시 보일 때 새 창으로 바꿔야 한다 (applyVisibility 참조) */
-  let windowsWereHidden = false;
   // --- 펫 한 마리의 도우미들 ---
 
   /** 펫이 서 있을 수 있는 영역: 작업 영역(작업표시줄 제외) 안에서 몸 전체가 보이는 범위 @param {Pet} pet @param {number} displayId */
@@ -102,6 +105,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       skin: pet.skin,
       state: { ...pet.engine.pet },
       chat: pet.host.snapshot(),
+      notice: pet.noticeInfo,
     };
   }
 
@@ -135,11 +139,15 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const pet = pets.get(petId);
     if (!pet || pet.host.isOpen) return; // 이미 대화창이 열려 있다
     pet.noticeActive = true;
+    pet.noticeInfo = { text, kind }; // 아직 열리지 않은 창이 나중에 열려도 지금 떠 있는 알림을 받도록 기억해 둔다
     sendAll('notice:show', { petId, text, kind });
-    pet.engine.setAgentAnim('attention'); // 펫이 알림을 알린다
-    if (kind !== 'done' && store.get().general.sound) shell.beep(); // 사용자가 시킨 일의 결과는 조용히, 먼저 거는 말에는 소리
+    // 설정 안내(setup)는 조용히 보여 주고 더 오래 둔다. 나머지는 펫이 알림을 알리고(소리 포함) 12초 뒤에 사라진다.
+    if (kind !== 'setup') {
+      pet.engine.setAgentAnim('attention');
+      if (kind !== 'done' && store.get().general.sound) shell.beep(); // 사용자가 시킨 일의 결과는 조용히, 먼저 거는 말에는 소리
+    }
     if (pet.noticeTimer) clearTimeout(pet.noticeTimer);
-    pet.noticeTimer = setTimeout(() => hideNotice(petId), 12_000);
+    pet.noticeTimer = setTimeout(() => hideNotice(petId), kind === 'setup' ? 25_000 : 12_000);
   }
 
   /** @param {string} petId */
@@ -147,6 +155,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const pet = pets.get(petId);
     if (!pet || !pet.noticeActive) return;
     pet.noticeActive = false;
+    pet.noticeInfo = null;
     if (pet.noticeTimer) clearTimeout(pet.noticeTimer);
     pet.noticeTimer = null;
     sendAll('notice:hide', { petId });
@@ -180,10 +189,40 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   const statusListeners = new Set();
   const emitStatus = () => statusListeners.forEach((cb) => cb());
 
+  // --- 첫 실행 안내: 쓸 수 있는 연결이 하나도 없으면 첫 번째 펫이 설정을 안내한다 (실행마다 한 번) ---
+
+  let setupHintShown = false;
+  /** 안내 말풍선이 떠 있는 펫 id */
+  /** @type {string | null} */
+  let setupHintPetId = null;
+
+  function updateSetupHint() {
+    const list = [...pets.values()].map((p) => {
+      const b = p.host.backends()[0];
+      return { checked: !!b?.checked, available: !!b?.available };
+    });
+    if (setupHintPetId && !needsSetupHint(list)) {
+      // 그 사이 연결이 생겼다 (CLI를 설치/로그인했다): 안내를 거둔다
+      const id = setupHintPetId;
+      setupHintPetId = null;
+      hideNotice(id);
+      return;
+    }
+    if (setupHintShown || !needsSetupHint(list)) return;
+    // 방해하면 안 되는 때에는 미루고 다음 점검 때 다시 본다 (보여 줬다고 치지 않는다)
+    if (!visible || suspended || quiet.fullscreen || store.get().general.doNotDisturb) return;
+    const id = primaryPetId();
+    if (!id) return;
+    setupHintShown = true;
+    setupHintPetId = id;
+    showNotice(id, { text: SETUP_HINT_TEXT, kind: 'setup' });
+  }
+
   /** @param {Pet} pet */
   async function refreshPet(pet) {
     await pet.host.refresh();
     emitStatus();
+    updateSetupHint();
   }
 
   /** @param {import('../shared/connections.js').Connection} conn @param {import('./store.js').Settings['skinTuning']} tuning */
@@ -218,6 +257,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       fingerprint: fingerprintOf(conn, tuning),
       optionsKey: JSON.stringify([conn.options, conn.persona]),
       noticeActive: false,
+      noticeInfo: null,
       noticeTimer: null,
     });
 
@@ -470,6 +510,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     if (!pet) return;
     hideNotice(pet.id);
     if (action === 'open') pet.host.setOpen(true); // "대화하기"
+    if (action === 'settings') openSettings('ai'); // "설정 열기" (설정 안내 말풍선)
   });
   ipcMain.on('perm:respond', (e, petId, id, allow) => {
     if (typeof id === 'string' && typeof allow === 'boolean') petOf(e, petId)?.host.respondPermission(id, allow);
@@ -552,6 +593,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       for (const d of screen.getAllDisplays()) createWindow(d); // ready-to-show에서 보여 준다
       return;
     }
+    for (const win of windows.values()) if (!win.isDestroyed()) win.showInactive();
   }
 
   function closeAllChats() {
@@ -593,7 +635,6 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const canPerch = s.behavior.sitOnWindows && !suspended && !!info && !info.none && !!info.hwnd;
     /** @type {{ x: number, y: number, width: number, height: number } | null} */
     let rect = null;
-    for (const win of windows.values()) if (!win.isDestroyed()) win.showInactive();
     if (canPerch && info) {
       // 도우미는 물리 픽셀을 주므로 Electron의 DIP 좌표로 바꾼다 (모니터마다 배율이 다를 수 있다).
       rect = screen.screenToDipRect(null, { x: info.x ?? 0, y: info.y ?? 0, width: info.w ?? 0, height: info.h ?? 0 });
