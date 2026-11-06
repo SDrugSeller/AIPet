@@ -25,7 +25,9 @@ contextBridge.exposeInMainWorld('aipetSettings', {
   personaDelete: (/** @type {string} */ id) => invoke('settings:persona-delete', id),
   personaOpenFolder: () => invoke('settings:persona-open-folder'),
 
-  // 스킨 크기
+  // 스킨 추가/크기
+  skinsOpenFolder: () => invoke('settings:skins-open-folder'),
+  skinsRefresh: () => invoke('settings:skins-refresh'),
   skinInfo: (/** @type {string} */ id) => invoke('settings:skin-info', id),
 
   onState: (/** @type {(s: any) => void} */ cb) => {

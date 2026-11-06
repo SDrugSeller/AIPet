@@ -4,7 +4,7 @@ import path from 'node:path';
 import { KIND_IDS, MAX_CONNECTIONS, keySecretName, newConnection } from '../shared/connections.js';
 import { findClaudeBinary } from './agent/claudeCodeAdapter.js';
 import { DEFAULT_OPENAI_BASE_URL } from './config.js';
-import { inspectSkin, listSkins } from './skin.js';
+import { inspectSkin, listSkins, userSkinsDir } from './skin.js';
 
 /**
  * 설정 창 (일반 창). 렌더러는 별도 preload로 필요한 API만 쓰고, 비밀(API 키)은 값을 받지 못한다.
@@ -26,7 +26,7 @@ export function createSettingsWindow({ store, config, personas, manager, userDat
   let initialTab = '';
 
   /** 설치된 스킨 목록 (설정 창을 열 때 읽는다) */
-  /** @type {{ id: string, name: string, author: string }[]} */
+  /** @type {{ id: string, name: string, author: string, source: 'bundled' | 'user' }[]} */
   let skins = [];
 
   function state() {
@@ -38,6 +38,7 @@ export function createSettingsWindow({ store, config, personas, manager, userDat
       hasKey: Object.fromEntries(s.connections.map((c) => [c.id, store.hasSecret(keySecretName(c.id))])),
       personas: { dir: personas.dir, items: personas.list() },
       skins,
+      skinsDir: userSkinsDir(),
       defaults: {
         workDir: config.defaultWorkDir,
         accountDir: path.join(userDataDir, 'claude-accounts'),
@@ -148,6 +149,23 @@ export function createSettingsWindow({ store, config, personas, manager, userDat
     if (!fromSettings(e)) return null;
     await shell.openPath(personas.dir);
     return true;
+  });
+
+  // --- 스킨 추가 (사용자 스킨 폴더) ---
+
+  ipcMain.handle('settings:skins-open-folder', async (e) => {
+    if (!fromSettings(e)) return null;
+    const dir = userSkinsDir();
+    if (!dir) return false;
+    await shell.openPath(dir);
+    return true;
+  });
+
+  /** 폴더에 새로 넣은 스킨을 목록에 반영한다 */
+  ipcMain.handle('settings:skins-refresh', async (e) => {
+    if (!fromSettings(e)) return null;
+    skins = await listSkins();
+    return state();
   });
 
   // --- 스킨 크기 ---

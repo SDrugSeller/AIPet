@@ -1,12 +1,13 @@
 // @ts-check
 import { app, protocol, safeStorage } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfig } from './config.js';
 import { buildMenuTemplate } from './menu.js';
 import { createPersonaStore } from './personas.js';
 import { createSettingsWindow } from './settingsWindow.js';
-import { loadSkin, registerSkinProtocol, SKIN_SCHEME } from './skin.js';
+import { configureSkinRoots, loadSkin, registerSkinProtocol, SKIN_SCHEME, skinSheetPath } from './skin.js';
 import { createStore } from './store.js';
 import { createTray } from './tray.js';
 import { createOverlayManager } from './windows.js';
@@ -26,6 +27,14 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     registerSkinProtocol();
     const userData = app.getPath('userData');
+    // 사용자가 추가하는 스킨 폴더: userData/skins/<이름>/skin.json (설정 창에서 폴더를 열 수 있다)
+    const userSkins = path.join(userData, 'skins');
+    try {
+      fs.mkdirSync(userSkins, { recursive: true });
+    } catch {
+      // 만들 수 없어도 번들 스킨은 쓸 수 있다
+    }
+    configureSkinRoots(userSkins);
 
     const store = createStore({ file: path.join(userData, 'settings.json'), safeStorage });
     // 말투 파일: userData/personas/*.txt (처음에는 저장소의 personas/ 내용으로 채운다)
@@ -92,7 +101,7 @@ if (!app.requestSingleInstanceLock()) {
       iconSkin = await loadSkin('default');
     }
     createTray({
-      iconPath: path.resolve(here, '../../skins', iconSkin.name, iconSkin.animations.idle.sheet),
+      iconPath: skinSheetPath(iconSkin.name, iconSkin.animations.idle.sheet) ?? '',
       frameSize: iconSkin.frameSize,
       hitbox: iconSkin.hitbox,
       getMenuTemplate: () => getMenuTemplate(),

@@ -4,16 +4,33 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { applyTuning } from '../shared/skinTuning.js';
+import { createSkinRoots, isInside, validateSkin } from './skinRoots.js';
 
 export const SKIN_SCHEME = 'aipet-skin';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const skinsRoot = path.resolve(here, '../../skins');
+const bundledRoot = path.resolve(here, '../../skins');
 
-/** @param {string} root @param {string} target */
-function isInside(root, target) {
-  const rel = path.relative(root, target);
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+/** 번들 스킨 + (설정되면) 사용자 스킨 폴더 */
+let roots = createSkinRoots({ bundled: bundledRoot });
+
+/**
+ * 사용자 스킨 폴더(userData/skins)를 등록한다. 앱 시작 시 한 번 호출한다.
+ * @param {string} userDir
+ */
+export function configureSkinRoots(userDir) {
+  roots = createSkinRoots({ bundled: bundledRoot, user: userDir });
+}
+
+/** 사용자 스킨 폴더 경로 (설정 전에는 null) */
+export const userSkinsDir = () => roots.userDir;
+
+/** 스킨의 시트 파일 경로 (트레이 아이콘용). 없는 스킨이면 null. @param {string} name @param {string} sheet */
+export function skinSheetPath(name, sheet) {
+  const found = roots.resolve(name);
+  if (!found) return null;
+  const file = path.resolve(found.dir, sheet);
+  return isInside(found.dir, file) ? file : null;
 }
 
 /**
@@ -23,11 +40,18 @@ function isInside(root, target) {
  * @param {import('../shared/skinTuning.js').Tuning | null} [tuning]  설정 창에서 입력한 프레임 크기/표시 높이
  */
 export async function loadSkin(name, tuning) {
-  const dir = path.resolve(skinsRoot, name);
-  if (!isInside(skinsRoot, dir)) throw new Error(`잘못된 스킨 이름: ${name}`);
+  const found = roots.resolve(name);
+  if (!found) throw new Error(`스킨을 찾을 수 없어요: ${name}`);
+  const dir = found.dir;
+  if (found.source === 'user' && !roots.skinJsonSizeOk(dir)) throw new Error(`skin.json이 너무 커요: ${name}`);
 
   const raw = JSON.parse(await fs.readFile(path.join(dir, 'skin.json'), 'utf8'));
   if (!raw.animations?.idle) throw new Error('skin.json: idle 애니메이션은 필수입니다');
+  // 사용자가 추가한 스킨은 외부에서 온 데이터이므로 값의 범위까지 검사한다.
+  if (found.source === 'user') {
+    const problem = validateSkin(raw);
+    if (problem) throw new Error(`skin.json (${name}): ${problem}`);
+  }
 
   for (const [state, anim] of Object.entries(raw.animations)) {
     const sheet = path.resolve(dir, String(anim.sheet));
@@ -39,6 +63,7 @@ export async function loadSkin(name, tuning) {
 
   return {
     name,
+    source: found.source,
     frameSize: t.frameSize,
     scale: t.scale,
     facing: raw.facing ?? 'left',
@@ -73,8 +98,9 @@ async function pngSize(file) {
  * @param {string} name
  */
 export async function inspectSkin(name) {
-  const dir = path.resolve(skinsRoot, name);
-  if (!isInside(skinsRoot, dir)) return null;
+  const found = roots.resolve(name);
+  if (!found) return null;
+  const dir = found.dir;
   try {
     const raw = JSON.parse(await fs.readFile(path.join(dir, 'skin.json'), 'utf8'));
     /** @type {{ anim: string, frames: number, width: number, height: number }[]} */
@@ -101,33 +127,35 @@ export async function inspectSkin(name) {
 }
 
 /**
- * 설치된 스킨 목록 (skins/<폴더>/skin.json 이 있는 폴더).
- * @returns {Promise<{ id: string, name: string, author: string }[]>}
+ * 설치된 스킨 목록 (번들 + 사용자 폴더의 skins/<폴더>/skin.json).
+ * @returns {Promise<{ id: string, name: string, author: string, source: 'bundled' | 'user' }[]>}
  */
 export async function listSkins() {
   const out = [];
-  for (const entry of await fs.readdir(skinsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+  for (const { id, dir, source } of roots.list()) {
     try {
-      const raw = JSON.parse(await fs.readFile(path.join(skinsRoot, entry.name, 'skin.json'), 'utf8'));
-      out.push({ id: entry.name, name: String(raw.name ?? entry.name), author: String(raw.author ?? '') });
+      if (source === 'user' && !roots.skinJsonSizeOk(dir)) continue;
+      const raw = JSON.parse(await fs.readFile(path.join(dir, 'skin.json'), 'utf8'));
+      if (source === 'user' && validateSkin(raw)) continue; // 형식이 잘못된 사용자 스킨은 목록에서 뺀다
+      out.push({ id, name: String(raw.name ?? id).slice(0, 64), author: String(raw.author ?? '').slice(0, 64), source });
     } catch {
-      // skin.json이 없거나 깨진 폴더는 목록에서 뺀다
+      // skin.json이 깨진 폴더는 목록에서 뺀다
     }
   }
   return out;
 }
 
-/** aipet-skin://<skin>/<file>.png 요청을 skins/ 폴더 안의 파일로만 연결한다. */
+/** aipet-skin://<skin>/<file>.png 요청을 스킨 폴더(번들 또는 사용자) 안의 PNG로만 연결한다. */
 export function registerSkinProtocol() {
   protocol.handle(SKIN_SCHEME, async (request) => {
     const url = new URL(request.url);
-    const skinDir = path.resolve(skinsRoot, url.hostname);
-    const file = path.resolve(skinDir, decodeURIComponent(url.pathname).replace(/^\/+/, ''));
-    if (!isInside(skinsRoot, skinDir) || !isInside(skinDir, file) || path.extname(file) !== '.png') {
+    const found = roots.resolve(url.hostname);
+    if (!found) return new Response('Not found', { status: 404 });
+    const file = path.resolve(found.dir, decodeURIComponent(url.pathname).replace(/^\/+/, ''));
+    if (!isInside(found.dir, file) || path.extname(file).toLowerCase() !== '.png') {
       return new Response('Not found', { status: 404 });
     }
-    if (!(await fs.stat(file).then((s) => s.isFile(), () => false))) {
+    if (!(await fs.stat(file).then((st) => st.isFile(), () => false))) {
       return new Response('Not found', { status: 404 }); // 에셋이 아직 없는 경우
     }
     return net.fetch(pathToFileURL(file).toString());

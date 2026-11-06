@@ -315,7 +315,7 @@ function buildCard(conn) {
       else if (active !== input) input.value = String(c.options[key] ?? '');
     }
     // 스킨/말투 목록
-    fillSelect(skinSel, state.skins.map((/** @type {any} */ k) => [k.id, k.name === k.id ? k.id : `${k.name} (${k.id})`]), c.skin);
+    fillSelect(skinSel, state.skins.map(skinOption), c.skin);
     fillSelect(personaSel, state.personas.items.map((/** @type {any} */ p) => [p.id, p.name]), c.persona);
 
     // 상태 배지
@@ -468,6 +468,28 @@ $('#personaDelete').addEventListener('click', async () => {
 
 $('#personaFolder').addEventListener('click', () => api.personaOpenFolder());
 
+// ---------------------------------------------------------------- 스킨 추가
+
+/** 스킨 선택 목록의 [값, 표시 이름]. 사용자가 추가한 스킨은 표시한다. @param {any} k */
+function skinOption(k) {
+  const base = k.name === k.id ? k.id : `${k.name} (${k.id})`;
+  return [k.id, k.source === 'user' ? `${base} · 내가 추가` : base];
+}
+
+function renderSkinAdd() {
+  $('#skinsDir').textContent = state.skinsDir ? `저장 위치: ${state.skinsDir}` : '';
+  const mine = state.skins.filter((/** @type {any} */ k) => k.source === 'user');
+  $('#skinsUserList').textContent = mine.length
+    ? `추가한 스킨 ${mine.length}개: ${mine.map((/** @type {any} */ k) => k.id).join(', ')}`
+    : '추가한 스킨이 아직 없어요.';
+}
+
+$('#skinsOpenFolder').addEventListener('click', () => api.skinsOpenFolder());
+$('#skinsRefresh').addEventListener('click', async () => {
+  apply(await api.skinsRefresh());
+  flashSaved('목록을 새로고침했어요');
+});
+
 // ---------------------------------------------------------------- 스킨 크기
 
 /** 크기를 조정 중인 스킨의 정보 { id, authored, sheets, current } @type {any} */
@@ -524,7 +546,7 @@ async function loadTuning(id) {
 }
 
 function renderTuning() {
-  const skins = state.skins.map((/** @type {any} */ k) => [k.id, k.name === k.id ? k.id : `${k.name} (${k.id})`]);
+  const skins = state.skins.map(skinOption);
   const sel = /** @type {HTMLSelectElement} */ ($('#tuneSkin'));
   fillSelect(sel, skins, tuneSkinId);
   // 처음에는 첫 캐릭터의 스킨을 보여 준다
@@ -703,6 +725,7 @@ function render() {
 
   renderConnections();
   renderPersona();
+  renderSkinAdd();
   renderTuning();
   renderReminders();
 

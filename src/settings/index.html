@@ -86,6 +86,22 @@
       </div>
 
       <div class="panel" role="tabpanel" id="panel-pet" aria-labelledby="tab-pet" hidden>
+        <section id="skinAddSection">
+          <h2>스킨 추가</h2>
+          <p class="hint">
+            직접 만들었거나 받은 스킨을 아래 폴더에 <strong>폴더째로</strong> 넣으면 "연결" 탭의 스킨 목록에 나타나요.
+            스킨은 <code>skin.json</code>과 PNG 시트로만 이루어지고, 코드는 실행되지 않아요.
+            폴더 이름은 영문, 숫자, <code>-</code>, <code>_</code>만 쓸 수 있어요. 앱에 들어 있는 스킨과 이름이 같으면 앱의 것이 우선해요.
+          </p>
+          <div class="inline">
+            <button type="button" id="skinsOpenFolder">스킨 폴더 열기</button>
+            <button type="button" id="skinsRefresh">목록 새로고침</button>
+          </div>
+          <p class="muted" id="skinsDir"></p>
+          <p class="muted" id="skinsUserList"></p>
+          <p class="muted">이미 쓰고 있는 스킨의 그림이나 skin.json을 고쳤다면 앱을 다시 시작해야 반영돼요.</p>
+        </section>
+
         <section id="tuneSection">
           <h2>스킨 크기</h2>
           <p class="hint">
