@@ -76,7 +76,7 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 | **OpenAI 호환 어댑터** | Ollama, LM Studio, OpenRouter, Gemini 호환 엔드포인트 등 | base URL + (선택) 키 | 앱 |
 
 - **CLI 어댑터 구현 방식**: 공식 CLI를 서브프로세스로 실행해 JSON 스트림을 파싱한다. **ACP(Agent Client Protocol)** 등 표준 프로토콜을 CLI가 지원하면 이를 우선 사용해 어댑터 하나로 여러 CLI를 처리한다 (지원 범위는 구현 시점에 검증).
-- **구현 현황**: Claude Code(도구+권한), Codex CLI·Gemini CLI(읽기 전용, 대화 기록은 앱이 이어 붙임), Anthropic API(공식 SDK 스트리밍; Opus/Fable/Sonnet 5.5는 서버 측 fallbacks 베타 사용, 안전 거절 처리), OpenAI 호환(Ollama 등). 외부 서버/계정과의 실제 통신은 가짜 서버·CLI 출력 기반 테스트로만 검증했다.
+- **구현 현황**: Claude Code(도구+권한), Codex CLI(기본 읽기 전용, 설정으로 작업 폴더 샌드박스 쓰기 허용)·Gemini CLI(읽기 전용, 대화 기록은 앱이 이어 붙임), Anthropic API(공식 SDK 스트리밍; Opus/Fable/Sonnet 5.5는 서버 측 fallbacks 베타 사용, 안전 거절 처리), OpenAI 호환(Ollama 등). 외부 서버/계정과의 실제 통신은 가짜 서버·CLI 출력 기반 테스트로만 검증했다.
 - **다중 연결**: 연결(`connections[]`: id, name, kind, enabled, skin, persona, options)이 곧 캐릭터다. 연결마다 `AgentHost`+어댑터가 하나씩 만들어지고, 펫 엔진·말풍선·권한 카드도 연결(petId)별로 분리된다. 같은 종류를 여러 개 둘 수 있으며(최대 8) Claude Code는 연결마다 `CLAUDE_CONFIG_DIR`를 달리해 계정을 나눈다. API 키는 `key:<id>`로 연결마다 `safeStorage`에 저장한다. 설정 변경은 `syncPets`가 실행 중인 펫을 추가/제거/갱신한다.
 - **첫 실행 흐름**: 어댑터별 `detect()`로 사용 가능한 백엔드를 자동 탐지 → 설정 화면에서 선택. CLI 미설치/미로그인 시 설치·로그인 안내만 표시한다.
 - **공통 최소 기능**: 텍스트 대화, 스트리밍, 중단, 상태 이벤트. 파일/도구 기능은 어댑터별 선택 지원(capability 플래그로 노출).
@@ -89,9 +89,10 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 
 ### 4.4 권한 모델
 - 읽기 전용 도구: 자동 허용 (설정으로 변경 가능)
-- 파일 쓰기/명령 실행/네트워크: 펫이 말풍선으로 승인 요청 → 사용자 허용/거부
+- 파일 쓰기/명령 실행/네트워크: 펫이 말풍선으로 승인 요청 → 사용자 허용/거부. 승인이 잦다는 피드백에 따라 항목별로 묻지 않고 허용하는 설정을 둔다(`permissions.autoAllowEdit` 파일 쓰기·수정, `autoAllowShell` 명령 실행, `autoAllowFetch` 웹 페이지 가져오기, 모두 기본 꺼짐). 작업 폴더 밖의 경로는 이 설정과 무관하게 항상 거부하고, 목록에 없는 도구(MCP 등)는 항상 묻는다. 자동 허용한 일은 대화창에 흔적 줄을 남긴다. 명령 실행은 명령이 건드리는 경로를 검사할 수 없어 작업 폴더 밖도 영향을 줄 수 있으므로, 켜기 전에 확인창을 띄운다.
 - CLI 어댑터는 CLI의 권한 요청을 `tool_request`로 중계하고 `respondPermission`으로 응답을 전달한다. API 어댑터는 앱이 직접 게이트한다.
 - 허용 범위(작업 디렉터리)를 설정에서 지정
+- Codex는 승인 요청을 앱으로 넘기지 못해(비대화형 `exec`) 항목별 승인이 불가능하다. 설정(`permissions.codexWrite`, 기본 꺼짐)을 켜면 `--sandbox workspace-write`로 실행해 작업 폴더 안 파일 수정·명령 실행을 자동으로 진행하고(샌드박스가 작업 폴더 밖 쓰기(임시 폴더 제외)와 네트워크를 차단, 읽기는 막지 않음), 실행한 일은 `trace` 이벤트로 대화창에 남긴다. 샌드박스를 끄는 옵션(`danger-full-access`, `--dangerously-bypass-approvals-and-sandbox`)은 쓰지 않는다. Gemini의 `auto_edit`/`yolo`는 개인 계정 이용 종료와 `yolo`의 위험 때문에 보류.
 - 웹 검색은 설정(`permissions.autoAllowWeb`, 기본 꺼짐)으로 허용: Claude Code는 `WebSearch` 승인을 자동 허용(`WebFetch`는 계속 묻는다), Codex는 `-c web_search="live"`, Gemini는 plan 모드의 검색 허용을 시스템 프롬프트로 안내(강제 아님). API/Ollama 연결은 도구가 없어 불가.
 
 **구현 메모 (M4, Claude Code)**: `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`로 실행하면 CLI가 도구 사용 전에 stdout으로 `control_request`(`subtype: can_use_tool`, `tool_name`, `input`)를 보내고, 앱이 stdin으로 `control_response`(`behavior: allow|deny`)를 돌려준다. `--setting-sources project,local`로 사용자 전역 허용 규칙이 승인 절차를 우회하지 못하게 한다. 이 프로토콜은 공식 SDK가 쓰는 방식이지만 CLI 버전에 따라 바뀔 수 있으므로 CLI 업데이트 시 `tests/claudeTranslate.test.mjs`와 실제 실행으로 재검증한다.
