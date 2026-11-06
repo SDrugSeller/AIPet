@@ -6,7 +6,8 @@ import { decide, describeRequest } from './permissions.js';
 const MAX_LOG = 20;
 
 /**
- * @typedef {{ role: 'user' | 'assistant' | 'error' | 'session', text: string }} LogEntry
+ * @typedef {{ role: 'user' | 'assistant' | 'error' | 'session' | 'trace', text: string }} LogEntry
+ *   trace: 묻지 않고 자동 허용한 일의 흔적 (파일 수정, 명령 실행 등)
  *   session: 대화 맥락이 끊겼다는 표시 (세션 만료, 새 대화 시작 등)
  * @typedef {{ id: string, title: string, detail: string }} PendingPermission
  *
@@ -20,7 +21,7 @@ const MAX_LOG = 20;
  *   broadcast: (channel: string, payload: any) => void,
  *   onOpenChange?: (open: boolean, opts: { focus: boolean }) => void,
  *   isEnabled?: (adapterId: string) => boolean,
- *   getPolicy?: () => { autoAllowRead: boolean, workDir: string },
+ *   getPolicy?: () => import('./permissions.js').Policy,
  *   notify?: () => void,
  *   onSelect?: (adapterId: string) => void,
  *   onTaskFinished?: (result: { ok: boolean, text: string }) => void,
@@ -164,12 +165,23 @@ export function createAgentHost({
     emitState();
   }
 
+  /** 자동 허용한 일의 흔적을 기록하고 대화창에 알린다. @param {string} name @param {any} input */
+  function markTrace(name, input) {
+    const { title, detail } = describeRequest(name, input);
+    const first = detail.split('\n')[0].trim();
+    const text = `자동 허용 · ${title}${first ? `: ${first.length > 140 ? `${first.slice(0, 140)}…` : first}` : ''}`;
+    pushLog({ role: 'trace', text });
+    broadcast('agent:event', { type: 'trace', text });
+  }
+
   /** 정책으로 바로 정할 수 있으면 응답하고, 아니면 사용자에게 묻는다. @param {Extract<import('./adapter.js').AgentEvent, { type: 'tool_request' }>} ev */
   function onToolRequest(ev) {
     const adapter = running;
     if (!adapter) return;
     const d = decide({ name: ev.name, input: ev.input }, getPolicy());
     if (d.action !== 'ask') {
+      // 설정으로 묻지 않고 허용한 일은 사용자가 알 수 있게 대화창에 한 줄 남긴다 (모르는 사이에 실행되지 않도록)
+      if (d.action === 'allow' && d.auto) markTrace(ev.name, ev.input);
       adapter.respondPermission(ev.id, d.action === 'allow', d.reason);
       return;
     }
@@ -211,6 +223,9 @@ export function createAgentHost({
       }
       case 'session':
         pushLog({ role: 'session', text: ev.text }); // 이미 broadcast됨
+        break;
+      case 'trace':
+        pushLog({ role: 'trace', text: ev.text }); // 어댑터가 알린 자동 실행의 흔적 (이미 broadcast됨)
         break;
       case 'done':
         turn.ok = true;

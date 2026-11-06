@@ -22,6 +22,22 @@ export const DEFAULTS = {
      * Codex: 실시간 웹 검색 켜기, Gemini: 검색 허용 안내. 기본은 꺼짐(검색어가 외부로 나가므로).
      */
     autoAllowWeb: false,
+    /**
+     * 승인 카드를 건너뛰고 자동 허용할 일 (Claude Code 연결의 도구 사용). 모두 기본 꺼짐.
+     * 작업 폴더 밖의 경로는 이 설정과 상관없이 거부한다. 자동 허용한 일은 대화창에 흔적이 남는다.
+     */
+    /** 파일 쓰기/수정 (작업 폴더 안에서만) */
+    autoAllowEdit: false,
+    /** 명령 실행(Bash/PowerShell). 명령이 건드리는 경로는 검사할 수 없어서 작업 폴더 밖도 건드릴 수 있다 */
+    autoAllowShell: false,
+    /** 웹 페이지 가져오기(WebFetch). 주소로 정보가 새어 나갈 수 있다 */
+    autoAllowFetch: false,
+    /**
+     * Codex CLI를 `--sandbox workspace-write`로 실행: 작업 폴더 안에서 파일 수정·명령 실행을 묻지 않고 진행한다.
+     * Codex는 승인 요청을 앱으로 넘기지 못해서 항목별 선택이나 "묻고 진행"이 불가능하다. 작업 폴더 밖(임시 폴더 제외)
+     * 쓰기와 네트워크는 샌드박스가 막는다. 기본 꺼짐(읽기 전용).
+     */
+    codexWrite: false,
     /** 에이전트가 접근할 수 있는 작업 폴더. 비어 있으면 앱 전용 폴더 */
     workDir: '',
   },
@@ -102,7 +118,7 @@ const skinTuning = (v) =>
 const SPEC = {
   connections: validateConnections,
   skinTuning,
-  permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, workDir: str(1000) },
+  permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, autoAllowEdit: isBool, autoAllowShell: isBool, autoAllowFetch: isBool, codexWrite: isBool, workDir: str(1000) },
   behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
   spontaneous: {
     enabled: isBool,

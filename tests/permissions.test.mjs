@@ -89,3 +89,48 @@ test('웹 검색을 허용해도 페이지 가져오기(WebFetch)와 다른 위�
   assert.equal(decide({ name: 'Bash', input: { command: 'curl x' } }, on).action, 'ask');
   assert.equal(decide({ name: 'Write', input: { file_path: path.join(work, 'a.txt'), content: 'x' } }, on).action, 'ask');
 });
+
+// --- 승인 카드를 건너뛰는 설정 (파일 수정 / 명령 실행 / 페이지 가져오기) ---
+
+const write = { name: 'Write', input: { file_path: path.join(work, 'a.txt'), content: 'x' } };
+const edit = { name: 'Edit', input: { file_path: path.join(work, 'a.txt'), old_string: 'a', new_string: 'b' } };
+const bash = { name: 'Bash', input: { command: 'dir' } };
+const fetchTool = { name: 'WebFetch', input: { url: 'https://example.com' } };
+
+test('파일 수정/명령 실행/페이지 가져오기는 기본이 모두 묻는다', () => {
+  for (const req of [write, edit, bash, fetchTool]) assert.equal(decide(req, policy).action, 'ask', req.name);
+});
+
+test('파일 쓰기·수정 허용: Write/Edit/MultiEdit/NotebookEdit만 자동 허용하고 흔적 표시(auto)가 붙는다', () => {
+  const on = { ...policy, autoAllowEdit: true };
+  assert.deepEqual(decide(write, on), { action: 'allow', auto: true });
+  assert.deepEqual(decide(edit, on), { action: 'allow', auto: true });
+  assert.equal(decide({ name: 'MultiEdit', input: { file_path: path.join(work, 'a.txt'), edits: [] } }, on).action, 'allow');
+  assert.equal(decide({ name: 'NotebookEdit', input: { notebook_path: path.join(work, 'n.ipynb') } }, on).action, 'allow');
+  // 다른 종류는 이 설정으로 열리지 않는다
+  assert.equal(decide(bash, on).action, 'ask');
+  assert.equal(decide(fetchTool, on).action, 'ask');
+});
+
+test('명령 실행 허용: Bash/PowerShell만 자동 허용하고, 파일 수정이나 가져오기는 계속 묻는다', () => {
+  const on = { ...policy, autoAllowShell: true };
+  assert.deepEqual(decide(bash, on), { action: 'allow', auto: true });
+  assert.equal(decide({ name: 'PowerShell', input: { command: 'dir' } }, on).action, 'allow');
+  assert.equal(decide(write, on).action, 'ask');
+  assert.equal(decide(fetchTool, on).action, 'ask');
+});
+
+test('페이지 가져오기 허용: WebFetch만 자동 허용한다 (웹 검색 설정과는 별개)', () => {
+  assert.deepEqual(decide(fetchTool, { ...policy, autoAllowFetch: true }), { action: 'allow', auto: true });
+  assert.equal(decide(fetchTool, { ...policy, autoAllowWeb: true }).action, 'ask');
+  assert.equal(decide({ name: 'WebSearch', input: { query: 'x' } }, { ...policy, autoAllowFetch: true }).action, 'ask');
+});
+
+test('모든 자동 허용을 켜도 작업 폴더 밖의 경로는 거부하고, 목록에 없는 도구는 계속 묻는다', () => {
+  const all = { ...policy, autoAllowEdit: true, autoAllowShell: true, autoAllowFetch: true, autoAllowWeb: true };
+  const outside = { name: 'Write', input: { file_path: path.join(os.tmpdir(), 'elsewhere', 'x.txt'), content: 'x' } };
+  assert.equal(decide(outside, all).action, 'deny');
+  assert.equal(decide({ name: 'Edit', input: { file_path: path.join(work, '..', 'x.txt') } }, all).action, 'deny');
+  assert.equal(decide({ name: 'mcp__server__do_thing', input: { a: 1 } }, all).action, 'ask');
+  assert.equal(decide({ name: 'Task', input: {} }, all).action, 'ask');
+});

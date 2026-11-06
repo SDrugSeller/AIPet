@@ -141,6 +141,20 @@ body {
   font-size: 12px;
 }
 
+/* 묻지 않고 자동 허용한 일의 흔적 (파일 수정, 명령 실행 등) */
+.msg.trace {
+  align-self: stretch;
+  max-width: none;
+  padding: 1px 2px;
+  background: none;
+  color: var(--bubble-muted);
+  font-size: 11px;
+}
+
+.msg.trace::before {
+  content: '✓ ';
+}
+
 /* 대화 맥락이 끊겼다는 구분선 (세션 만료, 새 대화 시작) */
 .msg.session {
   align-self: stretch;

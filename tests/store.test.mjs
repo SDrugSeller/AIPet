@@ -42,6 +42,7 @@ test('저장한 설정은 다시 열어도 유지된다 (재시작 후 설정 �
   assert.equal(b.get().general.sound, false);
   assert.equal(b.get().permissions.autoAllowRead, true); // 건드리지 않은 값은 그대로
   assert.equal(b.get().permissions.autoAllowWeb, false); // 웹 검색 허용은 기본 꺼짐
+  for (const k of ['autoAllowEdit', 'autoAllowShell', 'autoAllowFetch', 'codexWrite']) assert.equal(b.get().permissions[k], false, k); // 묻지 않고 허용하는 항목은 기본 꺼짐
 });
 
 test('일부만 바꿔도 같은 그룹의 다른 값은 유지된다', () => {
@@ -287,4 +288,24 @@ test('이미 새 형식이면 이전하지 않는다', () => {
   s.update({ connections: [] });
   const again = open(file);
   assert.deepEqual(again.get().connections, []); // 기본 연결로 되살아나지 않는다
+});
+
+test('묻지 않고 허용하는 권한 옵션은 저장되고 다시 열어도 유지되며, 불리언이 아니면 버린다', () => {
+  const { file } = tmpFile();
+  const a = open(file);
+  a.update({ permissions: { autoAllowEdit: true, autoAllowShell: 'yes', autoAllowFetch: 1 } });
+  assert.equal(a.get().permissions.autoAllowEdit, true);
+  assert.equal(a.get().permissions.autoAllowShell, false); // 'yes'는 불리언이 아니라서 버린다 (위험 옵션이 켜지지 않는다)
+  assert.equal(a.get().permissions.autoAllowFetch, false);
+  assert.equal(open(file).get().permissions.autoAllowEdit, true);
+});
+
+test('Codex 쓰기 허용은 기본 꺼짐이고, 불리언만 저장하며 다시 열어도 유지된다', () => {
+  const { file } = tmpFile();
+  const a = open(file);
+  assert.equal(a.get().permissions.codexWrite, false);
+  a.update({ permissions: { codexWrite: 'true' } });
+  assert.equal(a.get().permissions.codexWrite, false); // 문자열은 버린다 (쓰기 허용이 실수로 켜지지 않는다)
+  a.update({ permissions: { codexWrite: true } });
+  assert.equal(open(file).get().permissions.codexWrite, true);
 });

@@ -41,9 +41,21 @@
 
         <section>
           <h2>권한</h2>
-          <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구는 묻지 않고 허용</label>
+          <p class="muted">
+            Claude Code 연결이 도구를 쓸 때 매번 물을지, 묻지 않고 진행할지 항목별로 고르세요. 체크한 항목은 승인 카드 없이 실행되고,
+            실행한 일은 대화창에 "자동 허용 · …" 줄로 남아요. 체크하지 않은 항목은 말풍선으로 허용 여부를 물어요.
+          </p>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowRead" /> 읽기 전용 도구(파일 읽기·검색)는 묻지 않고 허용</label>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowEdit" /> 파일 쓰기·수정은 묻지 않고 허용 <span class="muted">(작업 폴더 안에서만)</span></label>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowShell" data-confirm="명령 실행을 묻지 않고 허용하면, 펫(AI)이 확인 없이 이 PC에서 명령을 실행해요. 명령은 작업 폴더 밖의 파일도 지우거나 바꿀 수 있고, 검사할 수 없어요. 웹 페이지나 파일 내용에 숨은 지시를 따라 실행될 위험도 있어요.&#10;&#10;정말 묻지 않고 허용할까요?" /> 명령 실행(Bash/PowerShell)은 묻지 않고 허용 <span class="muted">(위험: 작업 폴더 밖도 건드릴 수 있어요)</span></label>
+          <label class="row"><input type="checkbox" data-path="permissions.autoAllowFetch" /> 웹 페이지 가져오기는 묻지 않고 허용 <span class="muted">(주소로 정보가 새어 나갈 수 있어요)</span></label>
           <label class="row"><input type="checkbox" data-path="permissions.autoAllowWeb" /> 웹 검색 허용 <span class="muted">(검색어가 외부로 나가요)</span></label>
-          <p class="muted">Claude Code는 "웹 검색" 승인을 묻지 않고 허용하고(웹 페이지 가져오기는 계속 물어요), Codex는 실시간 검색을 켜고, Gemini는 검색해도 된다고 알려 줘요. 끄면 Claude Code는 매번 묻고 Codex와 Gemini에게는 검색하지 말라고 안내해요. API 키/Ollama 연결은 검색할 수 없어요.</p>
+          <label class="row"><input type="checkbox" data-path="permissions.codexWrite" /> <strong>Codex</strong>: 작업 폴더 안의 파일 수정·명령 실행을 묻지 않고 허용 <span class="muted">(샌드박스)</span></label>
+          <p class="muted">
+            Codex는 승인 요청을 앱으로 넘기지 못해서 "묻고 진행"이 안 돼요. 끄면 읽기 전용이고, 켜면 작업 폴더 안에서 파일 수정과 명령 실행을 바로 진행해요(파일 수정과 명령 실행을 따로 고를 수는 없어요).
+            작업 폴더 밖 쓰기(임시 폴더 제외)와 네트워크는 Codex의 샌드박스가 막지만, 파일 읽기는 막지 않아요. 실행한 명령과 파일 변경은 대화창에 "자동 허용 · … (Codex)" 줄로 남아요.
+          </p>
+          <p class="muted">웹 검색: Claude Code는 "웹 검색" 승인을 묻지 않고 허용하고, Codex는 실시간 검색을 켜고, Gemini는 검색해도 된다고 알려 줘요. 끄면 Claude Code는 매번 묻고 Codex와 Gemini에게는 검색하지 말라고 안내해요. API 키/Ollama 연결은 검색할 수 없어요.</p>
           <div class="field">작업 폴더 <span class="muted">(펫이 파일을 읽고 쓸 수 있는 범위)</span>
             <div class="inline">
               <input type="text" id="workDir" readonly />
@@ -52,8 +64,8 @@
             </div>
           </div>
           <p class="muted">
-            파일 쓰기, 명령 실행, 웹 페이지 가져오기는 항상 말풍선으로 허용 여부를 물어(웹 검색은 위에서 허용할 수 있어)요. 작업 폴더 밖의 경로는 거부돼요.
-            이 승인은 Claude Code 연결에서만 쓰여요. Codex·Gemini CLI는 읽기 전용으로, API 연결은 대화만 해요.
+            작업 폴더 밖의 경로는 위 항목을 모두 체크해도 거부돼요(단, 명령 실행은 명령이 건드리는 경로를 검사할 수 없어요). 위 목록에 없는 도구(MCP 등)는 항상 물어요.
+            위 항목별 선택은 Claude Code 연결에서만 쓰여요. Gemini CLI는 읽기 전용으로, API 연결은 대화만 해요.
           </p>
         </section>
       </div>

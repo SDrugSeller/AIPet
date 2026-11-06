@@ -161,3 +161,67 @@ test('이미 처리된 요청 ID에 대한 응답은 무시한다', async () => 
   await done;
   assert.equal(responses.length, 1);
 });
+
+test('파일 수정 자동 허용: 승인 카드 없이 실행하고, 대화창에 흔적을 남긴다', async () => {
+  const file = path.join(workDir, 'notes.txt');
+  const { adapter, responses } = toolAdapter({ name: 'Write', input: { file_path: file, content: '메모' } });
+  const t = setup(adapter, { autoAllowRead: true, autoAllowEdit: true, workDir });
+  await t.host.refresh();
+  await t.host.send('메모 만들어줘');
+
+  assert.deepEqual(responses, [['req-1', true, undefined]]);
+  assert.equal(t.sent.some(([c]) => c === 'perm:request'), false); // 카드가 뜨지 않았다
+  assert.equal(t.opens.length, 0);
+  const log = t.host.snapshot().log;
+  const trace = log.find((e) => e.role === 'trace');
+  assert.match(trace?.text ?? '', /^자동 허용 · 파일 쓰기: /);
+  assert.ok((trace?.text ?? '').includes('notes.txt'));
+  // 대화창에도 같은 흔적이 전달된다
+  assert.ok(t.sent.some(([c, p]) => c === 'agent:event' && p.type === 'trace' && p.text === trace?.text));
+});
+
+test('명령 실행 자동 허용: 실행한 명령이 흔적에 보이고, 켜지 않았다면 계속 묻는다', async () => {
+  const on = toolAdapter({ name: 'Bash', input: { command: 'npm test\n두 번째 줄' } });
+  const t = setup(on.adapter, { autoAllowRead: true, autoAllowShell: true, workDir });
+  await t.host.refresh();
+  await t.host.send('테스트 돌려줘');
+  assert.equal(on.responses[0][1], true);
+  const trace = t.host.snapshot().log.find((e) => e.role === 'trace');
+  assert.equal(trace?.text, '자동 허용 · 명령 실행 (Bash): npm test'); // 첫 줄만 보여 준다
+
+  const off = toolAdapter({ name: 'Bash', input: { command: 'npm test' } });
+  const t2 = setup(off.adapter, { autoAllowRead: true, autoAllowEdit: true, workDir }); // 파일 수정만 켜 둠
+  await t2.host.refresh();
+  const done = t2.host.send('테스트 돌려줘');
+  await tick();
+  assert.ok(t2.sent.some(([c]) => c === 'perm:request')); // 명령 실행은 여전히 묻는다
+  t2.host.respondPermission('req-1', true);
+  await done;
+  assert.equal(t2.host.snapshot().log.some((e) => e.role === 'trace'), false);
+});
+
+test('자동 허용해도 작업 폴더 밖 경로는 거부하고 흔적(자동 허용)을 남기지 않는다', async () => {
+  const { adapter, responses } = toolAdapter({ name: 'Write', input: { file_path: path.join(os.tmpdir(), 'elsewhere', 'x.txt'), content: 'x' } });
+  const t = setup(adapter, { autoAllowRead: true, autoAllowEdit: true, autoAllowShell: true, workDir });
+  await t.host.refresh();
+  await t.host.send('x');
+  assert.equal(responses[0][1], false);
+  assert.equal(t.host.snapshot().log.some((e) => e.role === 'trace'), false);
+});
+
+test('어댑터가 알린 자동 실행의 흔적(trace)은 대화 기록에 남고 대화창에도 전달된다', async () => {
+  const adapter = {
+    id: 'a', label: 'A', detect: async () => ({ ok: true }),
+    send: async function* () {
+      yield { type: 'trace', text: '자동 허용 · 명령 실행 (Codex): node --version' };
+      yield { type: 'text', delta: '끝' };
+      yield { type: 'done' };
+    },
+    respondPermission() {}, abort() {}, reset() {},
+  };
+  const t = setup(adapter);
+  await t.host.refresh();
+  await t.host.send('실행해줘');
+  assert.deepEqual(t.host.snapshot().log.map((e) => e.role), ['user', 'trace', 'assistant']);
+  assert.ok(t.sent.some(([c, p]) => c === 'agent:event' && p.type === 'trace' && /Codex/.test(p.text)));
+});

@@ -3,7 +3,7 @@
 // 펫마다 하나씩 만들어지고, 여러 대화창이 동시에 열릴 수 있다. main이 보내는 이벤트는 main.js가 petId로 골라 여기로 넘긴다.
 
 /**
- * @typedef {{ role: 'user' | 'assistant' | 'error' | 'session', text: string }} LogEntry
+ * @typedef {{ role: 'user' | 'assistant' | 'error' | 'session' | 'trace', text: string }} LogEntry
  * @typedef {{ x: number, y: number, w: number, h: number }} Rect
  * @typedef {{ id: string, title: string, detail: string }} PermRequest
  * @typedef {{ open: boolean, busy: boolean, backend: { label: string } | null, log: LogEntry[], pending: PermRequest[] }} ChatState
@@ -221,6 +221,9 @@ export function createChat(api, pet, layer, template) {
       } else if (ev.type === 'done') {
         if (pending && pending.classList.contains('typing')) pending.remove(); // 빈 응답
         pending = null;
+      } else if (ev.type === 'trace') {
+        // 묻지 않고 자동 허용한 일. 응답 자리("…")가 있으면 그 앞에 둔다.
+        addMessage('trace', ev.text, pending);
       } else if (ev.type === 'session') {
         // 대화 맥락이 끊겼다는 구분선. 응답 자리("…")가 이미 있으면 그 앞에 둬서 순서가 뒤집히지 않게 한다.
         addMessage('session', ev.text, pending);

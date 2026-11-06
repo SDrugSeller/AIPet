@@ -294,3 +294,40 @@ out({ type: 'result', subtype: 'success', is_error: false, session_id: 's-9', re
   assert.equal(text(changed), 'resume=false');
   assert.equal(changed.filter((e) => e.type === 'session').length, 1);
 });
+
+test('codex: 기본은 읽기 전용 샌드박스, 쓰기 허용 설정이면 workspace-write와 샌드박스 안내 프롬프트로 실행한다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readStdin}
+const out = (o) => console.log(JSON.stringify(o));
+out({ type: 'item.completed', item: { type: 'agent_message', text: 'ARGS=' + process.argv.slice(2).join(' ') + ' | STDIN=' + input.replace(/\\n/g, ' / ') } });
+out({ type: 'turn.completed', usage: {} });
+`);
+  const work = tmpWork();
+  const read = text(await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p' }) }), '질문'));
+  assert.match(read, /--sandbox read-only/);
+  assert.doesNotMatch(read, /workspace-write/);
+  assert.match(read, /cannot modify files|do not offer to/); // 읽기 전용 안내
+
+  const write = text(await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p', write: true }) }), '질문'));
+  assert.match(write, /--sandbox workspace-write/);
+  assert.doesNotMatch(write, /--sandbox read-only/);
+  assert.doesNotMatch(write, /danger-full-access|dangerously-bypass/); // 샌드박스를 끄는 옵션은 절대 쓰지 않는다
+  assert.match(write, /sandboxed/); // 샌드박스 안내
+});
+
+test('codex: 쓰기 모드에서 실행한 명령은 trace 이벤트로 나오고, 읽기 전용에서는 나오지 않는다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readStdin}
+const out = (o) => console.log(JSON.stringify(o));
+const c = { id: 'item_1', type: 'command_execution', command: 'node --version' };
+out({ type: 'item.started', item: { ...c, status: 'in_progress' } });
+out({ type: 'item.completed', item: { ...c, status: 'completed', exit_code: 0 } });
+out({ type: 'item.completed', item: { type: 'agent_message', text: '끝' } });
+out({ type: 'turn.completed', usage: {} });
+`);
+  const work = tmpWork();
+  const on = await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, write: true }) }), '실행해줘');
+  assert.deepEqual(on.filter((e) => e.type === 'trace'), [{ type: 'trace', text: '자동 허용 · 명령 실행 (Codex): node --version' }]);
+  const off = await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work }) }), '실행해줘');
+  assert.equal(off.some((e) => e.type === 'trace'), false);
+});

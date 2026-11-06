@@ -3,7 +3,7 @@
 // 공식 문서에서 가져왔다.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { translateCodexLine } from '../src/main/agent/codexCliAdapter.js';
+import { shortCommand, translateCodexLine } from '../src/main/agent/codexCliAdapter.js';
 import { friendlyGeminiError, translateGeminiLine } from '../src/main/agent/geminiCliAdapter.js';
 import { composePrompt } from '../src/main/agent/cli.js';
 
@@ -156,4 +156,66 @@ test('composePrompt: 지침, 이전 대화, 새 메시지를 한 프롬프트로
   assert.match(p, /\[이전 대화\]\n사용자: 안녕\n펫: 안녕하냥/);
   assert.match(p, /\[사용자의 새 메시지\]\n이름이 뭐야\?$/);
   assert.equal(composePrompt({ system: 's', history: [], message: 'm' }).includes('[이전 대화]'), false);
+});
+
+// --- 쓰기(workspace-write) 모드의 흔적: 실제 codex 0.166 출력에서 형식을 따왔다 ---
+
+const PS = String.raw`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Command`;
+
+test('codex: 쓰기 모드가 아니면 명령 실행과 파일 변경도 흔적을 남기지 않는다 (읽기 전용에서 읽기 명령이 대화창을 채우지 않게)', () => {
+  const st = codexState();
+  const events = run(
+    [
+      { type: 'item.started', item: { id: 'item_1', type: 'command_execution', command: `${PS} 'Get-Content a.txt'`, status: 'in_progress' } },
+      { type: 'item.started', item: { id: 'item_2', type: 'file_change', changes: [{ path: 'C:\\w\\a.txt', kind: 'add' }], status: 'in_progress' } },
+    ],
+    st,
+    translateCodexLine,
+  );
+  assert.equal(events.some((e) => e.type === 'trace'), false);
+  assert.deepEqual(events, [{ type: 'status', state: 'working' }]);
+});
+
+test('codex: 쓰기 모드에서는 실행한 명령과 파일 변경을 한 번씩 흔적으로 남긴다 (started/completed 중복 없음)', () => {
+  const st = { ...codexState(), trace: true };
+  const cmd = { id: 'item_1', type: 'command_execution', command: `${PS} 'node --version'` };
+  const file = { id: 'item_2', type: 'file_change', changes: [{ path: 'C:\\w\\hello.txt', kind: 'delete' }] };
+  const events = run(
+    [
+      { type: 'item.started', item: { ...cmd, status: 'in_progress' } },
+      { type: 'item.completed', item: { ...cmd, status: 'completed', exit_code: 0 } },
+      { type: 'item.started', item: { ...file, status: 'in_progress' } },
+      { type: 'item.completed', item: { ...file, status: 'completed' } },
+    ],
+    st,
+    translateCodexLine,
+  );
+  assert.deepEqual(events.filter((e) => e.type === 'trace'), [
+    { type: 'trace', text: '자동 허용 · 명령 실행 (Codex): node --version' },
+    { type: 'trace', text: '자동 허용 · 파일 삭제 (Codex): C:\\w\\hello.txt' },
+  ]);
+});
+
+test('codex: 파일이 여러 개 바뀌면 첫 파일과 개수를 보여 주고, 모르는 항목은 흔적을 남기지 않는다', () => {
+  const st = { ...codexState(), trace: true };
+  const events = run(
+    [
+      { type: 'item.started', item: { id: 'a', type: 'file_change', changes: [{ path: 'x.js', kind: 'update' }, { path: 'y.js', kind: 'add' }, { path: 'z.js', kind: 'add' }] } },
+      { type: 'item.started', item: { id: 'b', type: 'web_search', query: 'q' } },
+      { type: 'item.started', item: { id: 'c', type: 'reasoning', text: '…' } },
+    ],
+    st,
+    translateCodexLine,
+  );
+  assert.deepEqual(events.filter((e) => e.type === 'trace'), [{ type: 'trace', text: '자동 허용 · 파일 수정 (Codex): x.js 외 2개' }]);
+});
+
+test('shortCommand: Windows의 PowerShell 실행 부분과 따옴표를 떼고 첫 줄만, 길면 줄여서 보여 준다', () => {
+  assert.equal(shortCommand(`${PS} 'node --version'`), 'node --version');
+  assert.equal(shortCommand(`${PS} "Set-Content -LiteralPath 'a.txt' -Value ok"`), "Set-Content -LiteralPath 'a.txt' -Value ok");
+  assert.equal(shortCommand('git status'), 'git status'); // 다른 셸 명령은 그대로
+  assert.equal(shortCommand('echo 1\necho 2'), 'echo 1');
+  const long = shortCommand('x'.repeat(500));
+  assert.ok(long.length <= 141 && long.endsWith('…'));
+  assert.equal(shortCommand(undefined), '');
 });

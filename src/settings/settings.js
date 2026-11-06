@@ -93,8 +93,8 @@ const FIELDS = /** @type {Record<string, { key: string, type: 'bool' | 'text' | 
 
 /** 종류별 안내 한 줄 */
 const KIND_NOTE = /** @type {Record<string, string>} */ ({
-  'claude-code': '파일 읽기/쓰기와 명령 실행까지 할 수 있어요 (쓰기·실행은 말풍선에서 허용해야 해요).',
-  'codex-cli': '읽기 전용으로 실행돼요 (파일을 바꾸지 않아요). 터미널에서 codex login으로 로그인해 두세요.',
+  'claude-code': '파일 읽기/쓰기와 명령 실행까지 할 수 있어요 (쓰기·실행은 기본으로 말풍선에서 허용해야 해요. 아래 "권한"에서 묻지 않고 허용하도록 바꿀 수 있어요).',
+  'codex-cli': '기본은 읽기 전용이에요 (파일을 바꾸지 않아요). 아래 "권한"에서 작업 폴더 안의 파일 수정·명령 실행을 허용할 수 있어요. 터미널에서 codex login으로 로그인해 두세요.',
   'gemini-cli': '읽기 전용(plan 모드)으로 실행돼요. 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 두세요.',
   'anthropic-api': '대화만 해요 (도구 없음). 키를 확인하는 요청은 토큰을 쓰지 않아요.',
   'openai-compat': '대화만 해요 (도구 없음). Ollama, LM Studio, OpenRouter 등 OpenAI 호환 서버를 쓸 수 있어요.',
@@ -683,7 +683,15 @@ for (const e of document.querySelectorAll('[data-path]')) {
   const input = /** @type {HTMLInputElement} */ (e);
   const path = input.dataset.path ?? '';
   if (input.type === 'checkbox') {
-    input.addEventListener('change', () => save(toPatch(path, input.checked)));
+    input.addEventListener('change', () => {
+      // 위험한 옵션은 켜기 전에 한 번 확인한다 (취소하면 꺼 둔 채로 저장하지 않는다)
+      const warning = input.dataset.confirm;
+      if (input.checked && warning && !window.confirm(warning)) {
+        input.checked = false;
+        return;
+      }
+      save(toPatch(path, input.checked));
+    });
   } else {
     // 글자를 칠 때마다 저장하지 않고, 입력이 멈추거나 칸을 벗어날 때 저장한다.
     /** @type {NodeJS.Timeout | undefined} */

@@ -8,8 +8,10 @@
  *   | { type: 'status', state: 'thinking' | 'working' | 'idle' }
  *   | { type: 'done' }
  *   | { type: 'error', message: string }
- *   | { type: 'session', text: string }} AgentEvent
+ *   | { type: 'session', text: string }
+ *   | { type: 'trace', text: string }} AgentEvent
  *   session: 대화 맥락이 끊겼다는 표시 (세션 만료, 설정 변경으로 새 대화 시작 등). 대화창에 구분선으로 남는다.
+ *   trace: 승인 없이 실행된 일의 흔적 (Codex 샌드박스에서 실행한 명령/파일 수정 등). 대화창에 한 줄로 남는다.
  */
 
 /**
@@ -39,6 +41,11 @@ const TOOLS_READONLY = [
   'You may read files inside the allowed work folder, but you cannot modify files or run risky commands,',
   'so do not offer to. Keep answers short.',
 ].join(' ');
+const TOOLS_SANDBOX = [
+  'You can read and edit files and run commands, but only inside the allowed work folder, which is sandboxed:',
+  'writing outside it and network access are blocked, so do not try. No approval is asked, so be careful with',
+  'destructive actions and do only what the user asked. Keep answers short.',
+].join(' ');
 const WEB_ON = 'You may use web search when the question needs current or external information.';
 const WEB_OFF = 'Do not use web search or browse the web.';
 const TOOLS_ON = [
@@ -50,12 +57,15 @@ const TOOLS_ON = [
  * 시스템 프롬프트 = 사용자가 고른 말투 + 앱이 정하는 도구 사용 안내.
  * (말투는 설정의 말투 파일에서 오므로 사용자가 자유롭게 바꿀 수 있다.)
  * @param {string | undefined} persona
- * @param {boolean | 'readonly'} tools  false: 도구 없음(대화 전용) / 'readonly': 읽기만 가능 / true: 쓰기·실행도 가능(승인 후)
- * @param {{ web?: boolean }} [opts]  web: 웹 검색을 써도 되는가 ('readonly' 모드에서만 안내에 쓴다)
+ * @param {boolean | 'readonly' | 'sandbox'} tools  false: 도구 없음(대화 전용) / 'readonly': 읽기만 가능 / 'sandbox': 샌드박스
+ *   안의 작업 폴더에서 쓰기·명령 실행도 가능(승인 없이) / true: 쓰기·실행도 가능(승인 후)
+ * @param {{ web?: boolean }} [opts]  web: 웹 검색을 써도 되는가 ('readonly'/'sandbox' 모드에서만 안내에 쓴다)
  */
 export function buildSystemPrompt(persona, tools, { web = false } = {}) {
   // 읽기 전용 CLI(Codex, Gemini)는 승인 질문을 할 수 없어서, 웹 검색을 쓸지는 설정으로만 정하고 모델에게도 알려 준다.
-  const tail = tools === 'readonly' ? `${TOOLS_READONLY} ${web ? WEB_ON : WEB_OFF}` : tools ? TOOLS_ON : TOOLS_OFF;
+  const webNote = web ? WEB_ON : WEB_OFF;
+  const tail =
+    tools === 'readonly' ? `${TOOLS_READONLY} ${webNote}` : tools === 'sandbox' ? `${TOOLS_SANDBOX} ${webNote}` : tools ? TOOLS_ON : TOOLS_OFF;
   return `${(persona || '').trim() || DEFAULT_PERSONA}\n\n${tail}`;
 }
 
