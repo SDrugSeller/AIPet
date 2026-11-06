@@ -247,7 +247,7 @@ AIPet/
 - 무료로 쓰는 방법 (2026-11 조사, 한도와 정책은 자주 바뀌므로 구현 시 재확인):
   - ChatGPT 무료 계정: Codex CLI를 ChatGPT 로그인으로 쓰면 Free 플랜에도 포함(한도 있음, Codex Cloud 제외).
   - Gemini API 무료 키(AI Studio): 한도는 AI Studio 콘솔에서 확인. 무료 티어 요청은 Google 제품 개선에 쓰일 수 있다. OpenAI 호환 연결로 쓸 수 있다: 주소 `https://generativelanguage.googleapis.com/v1beta/openai/`, 키는 Bearer, 모델은 직접 입력(미검증).
-  - Gemini CLI의 개인 Google 로그인 무료 이용은 2026-06-18에 종료되고 Antigravity CLI로 대체됐다는 보도가 있다. 현재 Gemini CLI 어댑터의 안내("gemini로 로그인")를 재검토하고, 필요하면 Antigravity CLI 어댑터를 따로 조사한다.
+  - Gemini CLI의 개인 Google 로그인 무료 이용은 2026-06-18에 종료되고 Antigravity CLI로 대체됐다 (2026-11-06 사용자 PC에서 `IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals`로 확인). 현재 Gemini CLI 어댑터의 안내("gemini로 로그인")를 재검토하고, 필요하면 Antigravity CLI 어댑터를 따로 조사한다.
   - 로컬: Ollama 등 (이미 지원).
 
 ## 12. 다음 작업 (진행 순서)
@@ -260,5 +260,11 @@ AIPet/
    - **남은 확인**: (e) 설치본의 "로그인 시 자동 시작" 등록(시스템 설정을 바꿔서 확인하지 않음), **코드 서명 없음**(SmartScreen 경고, 배포 시 인증서 필요), 다른 PC·깨끗한 계정에서의 설치, 자동 업데이트 없음, macOS 빌드는 미작업. (사용자 스킨 폴더는 구현함: 5.4 "스킨 위치")
 2. **첫 실행 안내** (11장): 연결 종류 선택(구독/API 키/무료·로컬), 종류별 설치·로그인 단계, CLI 자동 감지, Gemini 무료 키 프리셋. Gemini CLI 안내 문구 재검토.
 3. **API 연결의 도구 루프** (후순위, 규모 큼): 현재 Anthropic API/OpenAI 호환 연결은 대화만 가능하다. 앱이 읽기/검색/쓰기/명령 도구를 정의하고 작업 폴더 안에서만 실행하며, 쓰기·명령은 기존 승인 카드로 묻는다. 어댑터별 도구 호출 형식 변환과 경로 검증 테스트가 필요하다. 이후 Codex/Gemini CLI의 읽기 전용 제한 해제(각 CLI의 승인 프로토콜 검증 후)도 검토.
-4. 알려진 제약: 쉬기/정시 알림은 첫 번째 펫만 말함, 펫끼리 겹침 회피 없음, 외부 서버/계정과의 실제 통신은 가짜 서버 기반으로만 검증, 구독 계정의 CLI 호출이 각 제공사 약관에 맞는지 미확인.
+4. **(보류) Antigravity CLI(`agy`) 연결** — 필요할 때 진행. 2026-06-18부터 개인 Google 계정의 Gemini CLI 이용이 종료되어(사용자 PC에서 `IneligibleTierError`로 확인) 그 후속인 Antigravity CLI를 연결하는 작업이다. 코드 규모는 Codex/Gemini 어댑터(각 약 180줄)와 비슷하지만, **착수 전에 아래를 먼저 확인해야 한다.** 이 PC에는 `agy`가 설치되어 있지 않다.
+   - 알려진 것(검색, 대부분 제3자 자료): 비대화 실행 `agy -p`, `--output-format text|json|stream-json`, `--input-format text|stream-json`(stdin), `--print-timeout`(기본 5분), 로그인은 대화형으로 한 번 해 두면 캐시된 자격증명 사용. 공식 문서: https://antigravity.google/docs/cli/headless
+   - 무료: 개인(Individual) 플랜 $0, 탭 완성/명령은 무제한, **에이전트 작업은 주간 할당량**(수치 비공개, 검색 같은 도구 사용은 더 빨리 닳을 가능성, 무료는 금방 소진된다는 후기). 유료 Google AI Pro/Ultra는 5시간 단위 갱신.
+   - 확인할 것 (막힐 수 있음): ① **읽기 전용 실행 옵션**이 있는가(Codex `--sandbox read-only`, Gemini `--approval-mode plan`에 해당). 없으면 안전하게 연결할 수 없고, 승인 중계 설계가 필요해 작업이 훨씬 커진다. ② `stream-json` 이벤트 구조(텍스트 조각, 도구 사용, 오류). ③ 프롬프트를 stdin(`--input-format stream-json`)으로 보낼 수 있는가(`-p`로 프롬프트를 주면 stdin을 읽지 않는다는 보고가 있음; 앱 원칙은 사용자 입력을 인자로 넘기지 않는 것). ④ 모델/말투(시스템 프롬프트) 지정 방법(`--model` 없음 보고). ⑤ 파이프로 실행할 때 출력이 비는 알려진 버그(https://github.com/google-antigravity/antigravity-cli/issues/76, 1.1.1에서 수정됐다고 하나 미검증)가 설치 버전에서 해결됐는가. ⑥ 계정 자격 오류("이 계정은 Antigravity를 쓸 수 없다")가 나는가.
+   - 시작 방법: 사용자가 `agy`를 설치·로그인한 뒤 `agy --help`와 `agy -p "한 문장으로 인사해" --output-format stream-json` 결과를 확인한다. ①이 안 되면 대화·검색 전용(도구 끄기) 옵션을 찾아보고, 그것도 없으면 연결을 보류한다.
+   - 대안: 무료로 대화+검색이 목적이면 Codex(ChatGPT 무료 계정, 이미 지원)가 지금 가장 현실적이다. Gemini API 무료 키 + Google 검색 연결(grounding) 어댑터도 후보(OpenAI 호환 연결은 검색 기능을 켜 주지 못한다).
+5. 알려진 제약: 쉬기/정시 알림은 첫 번째 펫만 말함, 펫끼리 겹침 회피 없음, 외부 서버/계정과의 실제 통신은 가짜 서버 기반으로만 검증, 구독 계정의 CLI 호출이 각 제공사 약관에 맞는지 미확인.
 
