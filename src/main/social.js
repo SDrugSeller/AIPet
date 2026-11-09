@@ -4,8 +4,9 @@
 
 /** 후보를 살피는 간격 */
 export const SOCIAL_TICK_MS = 5_000;
-/** 같은 두 펫이 다시 어울리기까지 최소 간격 (방향과 무관. 깬 펫이 곧 다시 잠들어도 깨웠다 재웠다를 반복하지 않도록) */
-export const PAIR_COOLDOWN_MS = 5 * 60_000;
+/** 같은 두 펫(방향과 무관)은 이 시간 안에 최대 PAIR_MAX_VISITS번까지만 어울린다 (깨웠다 재웠다가 끝없이 이어지지 않도록) */
+export const PAIR_WINDOW_MS = 5 * 60_000;
+export const PAIR_MAX_VISITS = 3;
 /** 잠든 지 이만큼은 지나야 깨우러 간다 (막 잠든 펫을 바로 깨우지 않는다) */
 export const MIN_SLEEP_MS = 10_000;
 /** 후보 쌍이 있을 때 이번 차례에 실제로 가 볼 확률 */
@@ -27,8 +28,15 @@ const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
  * }} deps
  */
 export function createSocial({ getPets, enabled, log = () => {}, now = Date.now, rand = Math.random }) {
-  /** @type {Map<string, number>} 두 펫의 id(정렬해서 "a|b") → 마지막으로 시작한 시각 */
-  const lastPair = new Map();
+  /** @type {Map<string, number[]>} 두 펫의 id(정렬해서 "a|b") → 최근 방문을 시작한 시각들 */
+  const visits = new Map();
+
+  /** 이 쌍이 최근 PAIR_WINDOW_MS 안에 방문한 횟수 (오래된 기록은 지운다) @param {string} key */
+  function recentVisits(key) {
+    const recent = (visits.get(key) ?? []).filter((t) => now() - t < PAIR_WINDOW_MS);
+    visits.set(key, recent);
+    return recent;
+  }
   /** @type {{ since: number } | null} */
   let active = null;
   /** @type {NodeJS.Timeout | null} */
@@ -49,7 +57,7 @@ export function createSocial({ getPets, enabled, log = () => {}, now = Date.now,
     for (const v of visitors) {
       for (const s of sleepers) {
         if (v.id === s.id || v.engine.pet.display !== s.engine.pet.display) continue;
-        if (now() - (lastPair.get(pairKey(v.id, s.id)) ?? -Infinity) < PAIR_COOLDOWN_MS) continue;
+        if (recentVisits(pairKey(v.id, s.id)).length >= PAIR_MAX_VISITS) continue;
         pairs.push({ v, s });
       }
     }
@@ -70,7 +78,7 @@ export function createSocial({ getPets, enabled, log = () => {}, now = Date.now,
       },
     });
     if (!started) return false;
-    lastPair.set(pairKey(v.id, s.id), now());
+    recentVisits(pairKey(v.id, s.id)).push(now());
     active = { since: now() };
     log(`${v.id}이(가) 자고 있는 ${s.id}을(를) 깨우러 감`);
     return true;

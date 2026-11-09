@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { createPetEngine } from '../src/main/petEngine.js';
-import { createSocial, MIN_SLEEP_MS, PAIR_COOLDOWN_MS } from '../src/main/social.js';
+import { createSocial, MIN_SLEEP_MS, PAIR_MAX_VISITS, PAIR_WINDOW_MS } from '../src/main/social.js';
 
 const skin = {
   facing: 'left',
@@ -138,17 +138,30 @@ test('가는 도중 사용자가 방문하는 펫을 클릭해도 취소된다',
   }
 });
 
-test('같은 쌍은 쿨다운이 지나야 다시 간다 (깨웠다 재웠다 반복 방지)', () => {
-  const { social, tick, cleanup, untilSleptEnough } = setup();
+test('같은 두 펫은 5분 안에 3번까지만 어울리고, 오래된 기록이 5분을 넘기면 다시 할 수 있다', () => {
+  const { social, tick, until, cleanup, untilSleptEnough } = setup();
   try {
+    assert.equal(PAIR_MAX_VISITS, 3);
     untilSleptEnough();
-    assert.equal(social.tick(), true);
-    tick(16_000); // 방문이 끝난다
-    assert.equal(social.busy, false);
-    tick(4000 + MIN_SLEEP_MS); // 깬 펫이 다시 잠들고 충분히 지났다
-    assert.equal(social.tick(), false, '쿨다운 안이라 가지 않는다');
-    tick(PAIR_COOLDOWN_MS);
-    assert.equal(social.tick(), true, '쿨다운이 지나면 다시 간다');
+    /** 깨우러 가기를 시작할 수 있을 때까지 0.5초씩 기다린다 (최대 maxMs). 시작했으면 true */
+    const startVisit = (maxMs = 120_000) => {
+      for (let t = 0; t < maxMs; t += 500) {
+        if (social.tick()) return true;
+        tick(500);
+      }
+      return false;
+    };
+    const first = Date.now();
+    for (let i = 0; i < PAIR_MAX_VISITS; i++) {
+      assert.equal(startVisit(), true, `${i + 1}번째 방문`);
+      until(() => !social.busy); // 방문이 끝난다
+    }
+    assert.ok(Date.now() - first < PAIR_WINDOW_MS, '세 번이 5분 안에 일어났다');
+    assert.equal(startVisit(), false, '5분 안에 네 번째는 가지 않는다');
+    assert.ok(Date.now() - first < PAIR_WINDOW_MS, '네 번째 시도도 첫 방문 5분 안');
+
+    tick(first + PAIR_WINDOW_MS - Date.now() + 1000); // 첫 방문이 5분 밖으로 나간다
+    assert.equal(startVisit(), true, '오래된 기록이 빠지면 다시 간다');
   } finally {
     cleanup();
   }
