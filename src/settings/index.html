@@ -19,6 +19,7 @@
         <button type="button" class="tab" role="tab" id="tab-perm" aria-controls="panel-perm" aria-selected="false" tabindex="-1">권한</button>
         <button type="button" class="tab" role="tab" id="tab-persona" aria-controls="panel-persona" aria-selected="false" tabindex="-1">말투</button>
         <button type="button" class="tab" role="tab" id="tab-pet" aria-controls="panel-pet" aria-selected="false" tabindex="-1">펫</button>
+        <button type="button" class="tab" role="tab" id="tab-behavior" aria-controls="panel-behavior" aria-selected="false" tabindex="-1">행동</button>
         <button type="button" class="tab" role="tab" id="tab-notice" aria-controls="panel-notice" aria-selected="false" tabindex="-1">알림</button>
         <button type="button" class="tab" role="tab" id="tab-general" aria-controls="panel-general" aria-selected="false" tabindex="-1">일반</button>
       </nav>
@@ -185,14 +186,39 @@
             <button type="button" id="tuneReset">원래대로</button>
           </div>
         </section>
+      </div>
 
+      <div class="panel" role="tabpanel" id="panel-behavior" aria-labelledby="tab-behavior" hidden>
         <section>
-          <h2>행동</h2>
+          <h2>돌아다니기</h2>
+          <p class="hint">모든 펫에 똑같이 적용되는 설정이에요. 캐릭터마다 다른 설정(스킨, 말투 등)은 "연결" 탭에 있어요.</p>
           <label class="row">
             <input type="checkbox" data-path="behavior.sitOnWindows" /> 활성 창 위에 올라가기
             <span class="muted">(창의 위치와 크기만 읽어요. 제목이나 내용은 읽지 않고, 이 PC 밖으로 나가지 않아요)</span>
           </label>
           <label class="row"><input type="checkbox" data-path="behavior.hideOnFullscreen" /> 전체화면 앱(영상·게임·발표)이 활성일 때는 펫 숨기기</label>
+        </section>
+
+        <section>
+          <h2>잠들기</h2>
+          <p class="hint">
+            마지막으로 펫을 건드린(클릭, 대화) 뒤 이 시간이 지나면 펫이 잠들어요.
+            대화창을 열어 둔 동안과 AI가 일하는 동안에는 잠들지 않고, 끝난 때부터 다시 세요.
+            다른 펫이 깨워 준 펫은 이 시간의 <strong>2/3</strong>만 깨어 있다가 다시 잠들어요(고정).
+          </p>
+          <label class="field">잠들기까지 시간 (초, 10~3600)
+            <input type="number" id="sleepAfterSec" min="10" max="3600" data-path="behavior.sleepAfterSec" />
+          </label>
+          <p class="muted" id="sleepNote"></p>
+          <label class="row"><input type="checkbox" data-path="behavior.neverSleep" /> 잠들지 않기 <span class="muted">(켜면 위 시간은 쓰지 않아요)</span></label>
+        </section>
+
+        <section>
+          <h2>펫끼리</h2>
+          <label class="row">
+            <input type="checkbox" data-path="general.petSocial" /> 펫끼리 어울리기
+            <span class="muted">(펫이 둘 이상일 때, 깨어 있는 펫이 같은 모니터에서 자고 있는 펫을 깨우러 가요. 방해 금지일 때는 하지 않아요)</span>
+          </label>
         </section>
       </div>
 
@@ -231,10 +257,6 @@
         <section>
           <h2>앱 동작</h2>
           <label class="row"><input type="checkbox" data-path="general.sound" /> 허용 요청이 오면 알림음</label>
-          <label class="row">
-            <input type="checkbox" data-path="general.petSocial" /> 펫끼리 어울리기
-            <span class="muted">(펫이 둘 이상일 때, 깨어 있는 펫이 같은 모니터에서 자고 있는 펫을 깨우러 가요. 방해 금지일 때는 하지 않아요)</span>
-          </label>
           <label class="row">
             <input type="checkbox" data-path="general.launchAtLogin" /> 로그인할 때 자동 시작
             <span class="muted" id="loginNote"></span>

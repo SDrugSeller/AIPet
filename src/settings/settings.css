@@ -408,3 +408,9 @@ input.conn-name:focus {
 .permPanel[hidden] {
   display: none;
 }
+
+/* 잠들지 않기를 켜면 시간 칸을 흐리게 (다른 묶음은 컨테이너째로 흐리게 하므로 여기만) */
+#sleepAfterSec:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

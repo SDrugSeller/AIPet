@@ -3,6 +3,7 @@
 // API 키 같은 비밀은 OS 키체인(Electron safeStorage)으로 암호화해서 저장하며, 렌더러에는 절대 보내지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { SLEEP_AFTER_DEFAULT_SEC, SLEEP_AFTER_MAX_SEC, SLEEP_AFTER_MIN_SEC } from '../shared/sleep.js';
 import { isValidConnection, keySecretName, newConnection, validateConnections } from '../shared/connections.js';
 
 /** @typedef {typeof DEFAULTS} Settings */
@@ -46,6 +47,10 @@ export const DEFAULTS = {
     sitOnWindows: true,
     /** 전체화면 앱(영상, 게임, 발표)이 활성일 때는 펫을 숨긴다 */
     hideOnFullscreen: true,
+    /** 마지막으로 건드린(클릭, 대화) 뒤 잠들기까지 시간(초). 다른 펫이 깨운 펫은 이 값의 2/3만 깨어 있다 */
+    sleepAfterSec: SLEEP_AFTER_DEFAULT_SEC,
+    /** 잠들지 않는다 */
+    neverSleep: false,
   },
   spontaneous: {
     /** 먼저 말 걸기 전체 스위치. 끄면 아래 항목이 모두 동작하지 않는다. (AI를 호출하지 않으므로 토큰은 쓰지 않는다) */
@@ -121,7 +126,7 @@ const SPEC = {
   connections: validateConnections,
   skinTuning,
   permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, autoAllowEdit: isBool, autoAllowShell: isBool, autoAllowFetch: isBool, codexWrite: isBool, workDir: str(1000) },
-  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool },
+  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool },
   spontaneous: {
     enabled: isBool,
     notifyDone: isBool,

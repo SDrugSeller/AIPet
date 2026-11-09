@@ -54,7 +54,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   const pets = new Map();
 
   const sleepSec = Number(process.env.AIPET_SLEEP_AFTER_SEC);
-  const sleepAfterMs = (debug && sleepSec > 0 ? sleepSec : 60) * 1000;
+  // 잠들기까지 시간: 설정(행동 탭)을 매번 읽는다. 디버그에서 AIPET_SLEEP_AFTER_SEC를 주면 그 값이 우선한다.
+  const sleepAfterMs = () => {
+    const b = store.get().behavior;
+    if (b.neverSleep) return Infinity;
+    return (debug && sleepSec > 0 ? sleepSec : b.sleepAfterSec) * 1000;
+  };
 
   // 디버그 전용: 마우스 이동 전달(forward)을 끄면 Windows가 전역 마우스 훅을 조용히 제거한 상황과 같아진다.
   const noForward = debug && process.env.AIPET_NO_FORWARD === '1';
@@ -839,7 +844,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   });
 
   // 설정(연결, 스킨 크기, 올라가기 등)이 바뀌면 펫과 활성 창 판단을 다시 맞춘다.
+  let neverSleepBefore = store.get().behavior.neverSleep;
   store.onChange(() => {
+    // 잠들지 않기를 켜면 자고 있던 펫도 깨어난다
+    const neverSleep = store.get().behavior.neverSleep;
+    if (neverSleep && !neverSleepBefore) for (const p of pets.values()) if (p.engine.sleeping) p.engine.poke();
+    neverSleepBefore = neverSleep;
     void syncPets();
     applyForeground();
   });

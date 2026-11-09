@@ -2,6 +2,7 @@
 // 펫의 행동 상태머신 (idle / walk / sleep / drag / fall / drop / 창 위로 jump 후 sit).
 // 위치와 애니메이션 상태는 여기서만 바꾸고, 바뀔 때마다 emit()으로 모든 창에 알린다.
 import { FALL_GRAVITY, moveDuration, positionAt } from '../shared/motion.js';
+import { wakeAwakeMs } from '../shared/sleep.js';
 import { bodyMetrics } from './perch.js';
 
 /** @param {number} a @param {number} b */
@@ -18,8 +19,6 @@ const NUDGE_HIT_MS = 1200;
 const NUDGE_REST_MS = 1100;
 /** 깨어나는 모션(wake) 길이 */
 const WAKE_MS = 1100;
-/** 다른 펫이 깨운 펫이 다시 잠들기까지 깨어 있는 시간 (사용자가 건드렸을 때보다 짧다: 깨우고 깨우고가 끝없이 이어지지 않게) */
-const AWAKE_AFTER_WAKE_MS = 20_000;
 
 /**
  * @typedef {{ left: number, right: number, ground: number }} Area
@@ -29,10 +28,12 @@ const AWAKE_AFTER_WAKE_MS = 20_000;
  *   skin: any,
  *   area: (displayId: number) => Area | null,
  *   emit: () => void,
- *   sleepAfterMs: number,
+ *   sleepAfterMs: number | (() => number),
  * }} opts
  */
-export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
+export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleepAfterOpt }) {
+  /** 마지막으로 건드린 뒤 잠들기까지의 시간(ms). 설정이 바뀌면 바로 반영되도록 매번 읽는다. 잠들지 않으면 Infinity */
+  const sleepAfterMs = () => (typeof sleepAfterOpt === 'function' ? sleepAfterOpt() : sleepAfterOpt);
   /** 펫이 사라진 뒤(연결 삭제 등)에는 타이머가 남아 있어도 아무것도 하지 않는다. */
   let disposed = false;
   const emit = () => {
@@ -142,6 +143,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
         after(animDuration(name), () => {
           agentAnim = null;
           agentOnce = false;
+          lastActive = Date.now(); // 완료/오류 모션이 끝난 때부터 다시 센다
           enterIdle();
         });
       } else {
@@ -158,7 +160,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
   /** 쉬는 시간이 끝났을 때 다음 행동을 고른다. */
   function decide() {
     if (perched) return decidePerched();
-    if (Date.now() - lastActive > sleepAfterMs) return enterSleep();
+    if (Date.now() - lastActive > sleepAfterMs()) return enterSleep();
     if (target && target.display === pet.display && Date.now() - lastPerchEnd > PERCH_COOLDOWN_MS && Math.random() < PERCH_CHANCE) {
       return goToPerch();
     }
@@ -370,7 +372,9 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
      */
     wakeUp(fromX) {
       if (pet.anim !== 'sleep' || pet.dragging) return false;
-      lastActive = Math.min(Date.now(), Date.now() - sleepAfterMs + AWAKE_AFTER_WAKE_MS);
+      // 사용자가 건드렸을 때(잠들기까지 전체)의 2/3만 깨어 있다가 다시 잔다. 깨우고 깨우고가 끝없이 이어지지 않게 한다.
+      const full = sleepAfterMs();
+      lastActive = Number.isFinite(full) ? Date.now() - full + wakeAwakeMs(full) : Date.now();
       settle();
       pet.facing = fromX < pet.x ? 'left' : 'right';
       setAnim('wake');
@@ -383,6 +387,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
     setHold(/** @type {boolean} */ value) {
       if (hold === value) return;
       hold = value;
+      if (!value) lastActive = Date.now(); // 대화창을 닫은 때부터 다시 센다 (오래 대화하다 닫자마자 잠들지 않게)
       if (!busyMoving()) enterIdle();
     },
 
@@ -392,6 +397,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
      */
     setAgentAnim(/** @type {string | null} */ name, /** @type {{ once?: boolean }} */ { once = false } = {}) {
       if (name === agentAnim && once === agentOnce) return;
+      if (name === null) lastActive = Date.now(); // 작업이 끝난 때부터 다시 센다
       agentAnim = name;
       agentOnce = name !== null && once;
       if (!busyMoving()) enterIdle();

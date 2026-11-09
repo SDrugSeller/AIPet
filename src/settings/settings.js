@@ -3,6 +3,7 @@
 
 import { KIND_IDS, KINDS, MAX_CONNECTIONS } from '../shared/connections.js';
 import { applyTuning, checkSheets, detectFrameSize } from '../shared/skinTuning.js';
+import { SLEEP_AFTER_DEFAULT_SEC, wakeAwakeMs } from '../shared/sleep.js';
 
 /** @type {any} */
 const api = /** @type {any} */ (window).aipetSettings;
@@ -805,6 +806,12 @@ function render() {
   const spBox = $('#spontaneousOptions');
   spBox.style.opacity = spOn ? '1' : '0.5';
   for (const e of spBox.querySelectorAll('input, button')) /** @type {HTMLInputElement} */ (e).disabled = !spOn;
+
+  // 잠들기: 잠들지 않기를 켜면 시간 칸을 회색으로, 아니면 깨워진 펫이 깨어 있는 시간을 보여 준다
+  const never = !!s.behavior.neverSleep;
+  /** @type {HTMLInputElement} */ ($('#sleepAfterSec')).disabled = never;
+  const sec = Number.isInteger(s.behavior.sleepAfterSec) ? s.behavior.sleepAfterSec : SLEEP_AFTER_DEFAULT_SEC;
+  $('#sleepNote').textContent = never ? '펫이 잠들지 않아요.' : `다른 펫이 깨운 펫은 ${Math.round(wakeAwakeMs(sec * 1000) / 1000)}초 뒤 다시 잠들어요.`;
 
   /** @type {HTMLInputElement} */ ($('#workDir')).value = s.permissions.workDir || `${state.defaults.workDir}  (기본)`;
   $('#loginNote').textContent = state.packaged ? '' : '(설치본에서만 적용돼요)';

@@ -185,6 +185,25 @@ test('변경하면 구독자에게 알린다', () => {
   assert.deepEqual(seen, [false]);
 });
 
+test('잠들기 설정: 기본 60초, 10~3600초 정수만 저장하고 잠들지 않기는 불리언만', () => {
+  const { file } = tmpFile();
+  const s = open(file);
+  assert.equal(s.get().behavior.sleepAfterSec, 60);
+  assert.equal(s.get().behavior.neverSleep, false);
+
+  s.update({ behavior: { sleepAfterSec: 300, neverSleep: true } });
+  assert.equal(s.get().behavior.sleepAfterSec, 300);
+  assert.equal(s.get().behavior.neverSleep, true);
+  assert.equal(open(file).get().behavior.sleepAfterSec, 300, '다시 열어도 유지');
+
+  for (const bad of [9, 3601, 0, -5, 60.5, '60', NaN]) {
+    s.update({ behavior: { sleepAfterSec: bad } });
+    assert.equal(s.get().behavior.sleepAfterSec, 300, `거부: ${String(bad)}`);
+  }
+  s.update({ behavior: { neverSleep: 'yes' } });
+  assert.equal(s.get().behavior.neverSleep, true);
+});
+
 test('행동/알림 설정: 범위와 형식을 검증한다', () => {
   const { file } = tmpFile();
   const s = open(file);
