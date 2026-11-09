@@ -52,11 +52,17 @@ export function createChat(api, pet, layer, template) {
   const input = /** @type {HTMLTextAreaElement} */ (q('.input'));
   const sendBtn = /** @type {HTMLButtonElement} */ (q('.send'));
   const closeBtn = q('.close');
+  const newBtn = /** @type {HTMLButtonElement} */ (q('.newchat'));
   const noticeText = /** @type {HTMLElement} */ (notice.querySelector('.notice-text'));
   layer.append(el, notice);
 
   let state = pet.chat;
   let shown = false;
+  /** 마지막 구분선 뒤에 오간 대화가 있는가: 있어야 "새 대화"를 누를 수 있다 (main도 같은 규칙으로 무시한다) */
+  let fresh = (() => {
+    const roles = pet.chat.log.map((e) => e.role);
+    return roles.slice(roles.lastIndexOf('session') + 1).includes('user');
+  })();
   /** 알림 말풍선이 떠 있어야 하는가 (main이 시간을 재서 보이고 숨긴다) */
   let noticeWanted = false;
   let noticeShown = false;
@@ -125,6 +131,7 @@ export function createChat(api, pet, layer, template) {
     nameEl.textContent = pet.name;
     backendEl.textContent = state.backend ? '' : '· 연결 확인 필요';
     sendBtn.textContent = state.busy ? '■' : '↑';
+    newBtn.disabled = state.busy || !fresh; // 응답 중에는 막는다
     sendBtn.title = state.busy ? '중단' : '보내기 (Enter)';
     sendBtn.setAttribute('aria-label', sendBtn.title);
   }
@@ -165,6 +172,10 @@ export function createChat(api, pet, layer, template) {
     }
   });
   closeBtn.addEventListener('click', () => api.chatClose(petId));
+  newBtn.addEventListener('click', () => {
+    api.chatNew(petId);
+    focusInput(); // 버튼이 가져간 키보드 포커스를 입력칸으로 되돌린다
+  });
   input.addEventListener('pointerdown', () => api.chatFocus(petId));
   // 이 대화창을 누르면 위로 올리고, 키보드 포커스를 받을 대화창으로 삼는다.
   el.addEventListener('pointerdown', () => {
@@ -199,6 +210,8 @@ export function createChat(api, pet, layer, template) {
 
     /** 사용자가 보낸 메시지 @param {{ text: string }} m */
     handleUser(m) {
+      fresh = true;
+      renderMeta();
       addMessage('user', m.text);
       pending = addMessage('assistant', '…');
       pending.classList.add('typing');
@@ -227,6 +240,8 @@ export function createChat(api, pet, layer, template) {
       } else if (ev.type === 'session') {
         // 대화 맥락이 끊겼다는 구분선. 응답 자리("…")가 이미 있으면 그 앞에 둬서 순서가 뒤집히지 않게 한다.
         addMessage('session', ev.text, pending);
+        fresh = false; // 맥락이 끊겼으니 새로 시작할 것이 없다
+        renderMeta();
       }
     },
 

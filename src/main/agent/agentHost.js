@@ -320,6 +320,21 @@ export function createAgentHost({
       clearPending();
     },
 
+    /**
+     * 사용자가 새 대화를 시작한다: 어댑터의 대화 맥락(Claude Code 세션, 앱이 붙여 보내던 대화 기록)을 비우고,
+     * 대화창에는 이전 대화를 그대로 두고 구분선만 남긴다. 응답 중이거나, 마지막 구분선 뒤에 오간 대화가 없으면 아무것도 하지 않는다.
+     * @returns {boolean} 새 대화를 시작했는가
+     */
+    newSession() {
+      if (busy) return false;
+      const lastMark = log.map((e) => e.role).lastIndexOf('session');
+      if (!log.slice(lastMark + 1).some((e) => e.role === 'user')) return false;
+      for (const a of adapters) a.reset?.();
+      markSession('새 대화를 시작했어요 (이전 대화 내용은 기억하지 않아요)');
+      emitState();
+      return true;
+    },
+
     /** 사용자가 고른 AI 연결 @param {string} id */
     select(id) {
       if (!byId(id) || id === selected) return;

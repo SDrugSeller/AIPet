@@ -331,3 +331,34 @@ out({ type: 'turn.completed', usage: {} });
   const off = await collect(createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work }) }), '실행해줘');
   assert.equal(off.some((e) => e.type === 'trace'), false);
 });
+
+test('claude: reset() 뒤에는 이전 세션을 이어 붙이지 않고 새 세션으로 시작한다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readFirstLine}
+const out = (o) => console.log(JSON.stringify(o));
+out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'resume=' + process.argv.includes('--resume') } } });
+out({ type: 'result', subtype: 'success', is_error: false, session_id: 's-' + Date.now(), result: 'ok' });
+`);
+  const work = tmpWork();
+  const a = createClaudeCodeAdapter({ getConfig: () => ({ path: cmd, tools: false, workDir: work, persona: 'p' }), metaDir: path.join(work, 'meta') });
+  assert.equal(text(await collect(a, '1')), 'resume=false');
+  assert.equal(text(await collect(a, '2')), 'resume=true'); // 이어 말한다
+  a.reset?.();
+  assert.equal(text(await collect(a, '3')), 'resume=false'); // 새 대화
+  assert.equal(text(await collect(a, '4')), 'resume=true'); // 새 세션을 다시 이어 간다
+});
+
+test('codex: reset() 뒤에는 앞선 대화를 프롬프트에 붙이지 않는다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readStdin}
+const out = (o) => console.log(JSON.stringify(o));
+out({ type: 'item.completed', item: { type: 'agent_message', text: input.includes('[이전 대화]') ? 'HAS_HISTORY' : 'NO_HISTORY' } });
+out({ type: 'turn.completed', usage: {} });
+`);
+  const work = tmpWork();
+  const a = createCodexCliAdapter({ getConfig: () => ({ path: cmd, workDir: work, persona: 'p' }) });
+  assert.equal(text(await collect(a, '첫 질문')), 'NO_HISTORY'); // 아직 앞선 대화가 없다
+  assert.equal(text(await collect(a, '두 번째')), 'HAS_HISTORY'); // 앞선 대화가 붙는다
+  a.reset?.();
+  assert.equal(text(await collect(a, '세 번째')), 'NO_HISTORY');
+});

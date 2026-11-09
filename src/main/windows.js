@@ -526,6 +526,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     pet.host.setOpen(!pet.host.isOpen);
   });
   ipcMain.on('chat:close', (e, petId) => petOf(e, petId)?.host.setOpen(false));
+  ipcMain.on('chat:new', (e, petId) => petOf(e, petId)?.host.newSession());
   ipcMain.on('chat:send', (e, petId, text) => {
     if (typeof text === 'string') void petOf(e, petId)?.host.send(text);
   });

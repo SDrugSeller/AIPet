@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('aipet', {
   chatSend: (/** @type {string} */ petId, /** @type {string} */ text) => ipcRenderer.send('chat:send', petId, text),
   chatAbort: (/** @type {string} */ petId) => ipcRenderer.send('chat:abort', petId),
   chatClose: (/** @type {string} */ petId) => ipcRenderer.send('chat:close', petId),
+  /** 새 대화 시작 (응답 중이거나 이어 온 대화가 없으면 main이 무시한다) */
+  chatNew: (/** @type {string} */ petId) => ipcRenderer.send('chat:new', petId),
   /** 입력창을 눌렀다: 키보드 포커스가 필요하다 (권한 요청으로 자동으로 열린 말풍선일 때) */
   chatFocus: (/** @type {string} */ petId) => ipcRenderer.send('chat:focus', petId),
   /** 도구 사용 승인 카드의 허용/거부 */

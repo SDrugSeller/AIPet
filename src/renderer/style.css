@@ -101,6 +101,31 @@ body {
   color: var(--bubble-fg);
 }
 
+.tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.newchat {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.newchat:hover:not(:disabled) {
+  color: var(--bubble-fg);
+  text-decoration: underline;
+}
+
+.newchat:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .log {
   display: flex;
   flex-direction: column;

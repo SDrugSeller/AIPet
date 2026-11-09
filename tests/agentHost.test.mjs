@@ -125,3 +125,62 @@ test('대화가 오간 뒤 AI 연결을 바꾸면 새 대화로 시작한다는 
   assert.match(last?.text ?? '', /새 대화/);
   assert.ok(sent.some(([c, p]) => c === 'agent:event' && p.type === 'session' && /새 대화/.test(p.text)));
 });
+
+test('새 대화: 어댑터 맥락을 비우고, 이전 대화는 그대로 두고 구분선만 남긴다', async () => {
+  let resets = 0;
+  const a = { ...fakeAdapter('a', [{ type: 'text', delta: '응' }, { type: 'done' }]), reset: () => resets++ };
+  const { host, sent } = setup([a]);
+  await host.refresh();
+  await host.send('안녕');
+  const before = host.snapshot().log.map((e) => ({ ...e }));
+
+  assert.equal(host.newSession(), true);
+  assert.equal(resets, 1);
+  const log = host.snapshot().log;
+  assert.deepEqual(log.slice(0, before.length), before); // 이전 대화는 보존된다
+  assert.equal(log.at(-1)?.role, 'session');
+  assert.match(log.at(-1)?.text ?? '', /새 대화/);
+  assert.ok(sent.some(([c, p]) => c === 'agent:event' && p.type === 'session' && /새 대화/.test(p.text))); // 대화창에도 전달
+});
+
+test('새 대화: 이어 온 대화가 없으면(처음이거나 방금 눌렀으면) 아무것도 하지 않는다', async () => {
+  let resets = 0;
+  const a = { ...fakeAdapter('a', [{ type: 'text', delta: '응' }, { type: 'done' }]), reset: () => resets++ };
+  const { host } = setup([a]);
+  await host.refresh();
+  assert.equal(host.newSession(), false); // 아직 대화가 없다
+  await host.send('안녕');
+  assert.equal(host.newSession(), true);
+  assert.equal(host.newSession(), false); // 방금 눌렀다: 구분선이 연달아 쌓이지 않는다
+  assert.equal(resets, 1);
+  assert.equal(host.snapshot().log.filter((e) => e.role === 'session').length, 1);
+  await host.send('다시 말할게');
+  assert.equal(host.newSession(), true); // 새 대화가 오간 뒤에는 다시 가능
+  assert.equal(resets, 2);
+});
+
+test('새 대화: 응답 중에는 시작하지 않는다 (비활성화와 같은 규칙)', async () => {
+  let resets = 0;
+  /** @type {() => void} */
+  let release = () => {};
+  const gate = new Promise((r) => (release = () => r(undefined)));
+  const a = {
+    ...fakeAdapter('a', []),
+    send: async function* () {
+      yield { type: 'status', state: 'working' };
+      await gate;
+      yield { type: 'done' };
+    },
+    reset: () => resets++,
+  };
+  const { host } = setup([a]);
+  await host.refresh();
+  const done = host.send('오래 걸리는 질문');
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(host.snapshot().busy, true);
+  assert.equal(host.newSession(), false);
+  assert.equal(resets, 0);
+  release();
+  await done;
+  assert.equal(host.newSession(), true); // 끝난 뒤에는 가능
+});
