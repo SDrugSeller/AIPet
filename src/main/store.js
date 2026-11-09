@@ -71,6 +71,8 @@ export const DEFAULTS = {
     sound: true,
     /** 펫 표시 여부 (트레이에서 숨김/보이기) */
     visible: true,
+    /** 펫끼리 어울리기: 깨어 있는 펫이 자고 있는 펫을 깨우러 간다 */
+    petSocial: true,
   },
 };
 
@@ -134,6 +136,7 @@ const SPEC = {
     doNotDisturb: isBool,
     sound: isBool,
     visible: isBool,
+    petSocial: isBool,
   },
 };
 

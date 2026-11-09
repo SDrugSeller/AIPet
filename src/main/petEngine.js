@@ -13,6 +13,13 @@ const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const PERCH_COOLDOWN_MS = 45_000;
 /** 쉬는 동안 다음 행동을 고를 때 창에 올라가기로 할 확률 */
 const PERCH_CHANCE = 0.4;
+/** 자는 펫을 깨우러 가서 도착한 뒤 깨우는 손짓(nudge)을 시작해 실제로 닿기까지, 그리고 닿은 뒤 마무리까지 */
+const NUDGE_HIT_MS = 1200;
+const NUDGE_REST_MS = 1100;
+/** 깨어나는 모션(wake) 길이 */
+const WAKE_MS = 1100;
+/** 다른 펫이 깨운 펫이 다시 잠들기까지 깨어 있는 시간 (사용자가 건드렸을 때보다 짧다: 깨우고 깨우고가 끝없이 이어지지 않게) */
+const AWAKE_AFTER_WAKE_MS = 20_000;
 
 /**
  * @typedef {{ left: number, right: number, ground: number }} Area
@@ -106,10 +113,25 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
   /** 지금 서 있는 곳의 영역: 창 위면 창 윗변, 아니면 바닥 */
   const standArea = () => (perched && target && target.id === perched ? perchArea(target) : area(pet.display));
 
+  // --- 자는 펫 깨우러 가기 (펫끼리 어울리기) ---
+  /** 지금 진행 중인 방문. 다른 동작이 끼어들면 'cancelled'로 끝난다. */
+  /** @type {{ onEnd?: (reason: 'done' | 'skipped' | 'cancelled') => void } | null} */
+  let visiting = null;
+
+  const canVisitNow = () => !visiting && !hold && !agentAnim && !perched && !pet.dragging && (pet.anim === 'idle' || pet.anim === 'walk');
+
+  /** @param {'done' | 'skipped' | 'cancelled'} reason */
+  function endVisit(reason) {
+    const v = visiting;
+    visiting = null;
+    v?.onEnd?.(reason);
+  }
+
   /** 낙하/점프/착지 중에는 애니메이션을 바꾸지 않는다 (끝나면 enterIdle이 반영한다). */
   const busyMoving = () => pet.dragging || pet.anim === 'fall' || pet.anim === 'drop' || pet.anim === 'jump';
 
   function enterIdle() {
+    if (visiting) endVisit('cancelled'); // 방문 도중에 다른 동작이 끼어들었다
     settle();
     if (agentAnim) {
       const name = agentAnim;
@@ -260,6 +282,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
     /** 이 펫을 정리한다: 예약된 동작을 모두 취소하고 더는 상태를 알리지 않는다. */
     dispose() {
       disposed = true;
+      if (visiting) endVisit('cancelled');
       clearTimer();
     },
 
@@ -280,7 +303,80 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
     /** 사용자가 펫을 건드렸다 (클릭, 대화 등). 자고 있으면 깨운다. */
     poke() {
       lastActive = Date.now();
-      if (pet.anim === 'sleep') enterIdle();
+      if (visiting) {
+        endVisit('cancelled');
+        enterIdle();
+      } else if (pet.anim === 'sleep') {
+        enterIdle();
+      }
+    },
+
+    /** 자고 있는가 */
+    get sleeping() {
+      return pet.anim === 'sleep' && !pet.dragging;
+    },
+
+    /** 다른 펫을 깨우러 갈 만큼 한가한가: 바닥에서 가만히 있거나 걷는 중이고 대화·에이전트·드래그와 무관할 때 */
+    get canVisit() {
+      return canVisitNow();
+    },
+
+    /** 이 펫이 잠든 지 얼마나 됐는지(ms). 자고 있지 않으면 0 */
+    sleptFor() {
+      return pet.anim === 'sleep' ? Date.now() - pet.t0 : 0;
+    },
+
+    /**
+     * 자고 있는 펫(발 위치 toward) 옆으로 걸어가 깨운다. 갈 수 없으면 false.
+     * 도착했을 때 shouldNudge()가 false면(그 사이 상대가 깼다 등) 아무것도 하지 않고 끝난다.
+     * 손이 닿는 순간 onNudge()를 부르고, 끝나면 onEnd(reason)을 부른다. 도중에 사용자가 건드리면 'cancelled'.
+     * @param {{ toward: number, shouldNudge: () => boolean, onNudge: () => void, onEnd?: (reason: 'done' | 'skipped' | 'cancelled') => void }} opts
+     */
+    visit({ toward, shouldNudge, onNudge, onEnd }) {
+      if (!canVisitNow()) return false;
+      const a = area(pet.display);
+      if (!a) return false;
+      const gap = bodyLeft + bodyRight; // 몸 하나 폭 떨어져 선다
+      const side = pet.x < toward ? -1 : 1;
+      let x1 = clamp(toward + side * gap, a.left, a.right);
+      if (Math.abs(x1 - toward) < gap * 0.7) x1 = clamp(toward - side * gap, a.left, a.right); // 화면 끝이라 반대쪽으로
+      if (Math.abs(x1 - toward) < gap * 0.7) return false;
+      visiting = { onEnd };
+      const me = visiting;
+      startWalk(x1, () => {
+        if (visiting !== me) return;
+        if (!shouldNudge()) {
+          endVisit('skipped');
+          return enterIdle();
+        }
+        pet.facing = toward < pet.x ? 'left' : 'right';
+        setAnim('nudge');
+        emit();
+        after(NUDGE_HIT_MS, () => {
+          if (visiting !== me) return;
+          onNudge();
+          after(NUDGE_REST_MS, () => {
+            endVisit('done');
+            enterIdle();
+          });
+        });
+      });
+      return true;
+    },
+
+    /**
+     * 다른 펫이 깨웠다: 그쪽(발 위치 fromX)을 보며 깨어난다. 자고 있지 않았으면 false.
+     * @param {number} fromX
+     */
+    wakeUp(fromX) {
+      if (pet.anim !== 'sleep' || pet.dragging) return false;
+      lastActive = Math.min(Date.now(), Date.now() - sleepAfterMs + AWAKE_AFTER_WAKE_MS);
+      settle();
+      pet.facing = fromX < pet.x ? 'left' : 'right';
+      setAnim('wake');
+      emit();
+      after(WAKE_MS, enterIdle);
+      return true;
     },
 
     /** 대화창이 열려 있는 동안 제자리에 머문다. */
@@ -329,6 +425,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs }) {
     },
 
     startDrag() {
+      if (visiting) endVisit('cancelled');
       clearTimer();
       settle();
       if (perched) lastPerchEnd = Date.now();

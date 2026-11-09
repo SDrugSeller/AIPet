@@ -35,7 +35,9 @@
     "fall": "drag",
     "run": "walk",
     "sit": "idle",
-    "sleep": "idle"
+    "sleep": "idle",
+    "nudge": "talk",
+    "wake": "attention"
   },
   "randomActions": [
     { "anim": "yawn",        "weight": 3, "cooldownSec": 120 },

@@ -63,6 +63,7 @@ npm run dist:debug   # 디버그판만:   dist/debug/AIPet-Setup-<버전>-debug.
   - 승인 요청이 오면 펫이 놀란 표정을 짓고 알림음이 납니다. 다른 앱을 쓰는 중이어도 포커스를 가져가지 않습니다.
 - 환경변수(연결에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `ANTHROPIC_API_KEY`
 - 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 시험용 환경변수 사용, 동작 로그(디버그판과 같은 파일, 콘솔에도 출력). `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`, `AIPET_SKIN`(모든 연결에 한 스킨을 강제)
+- 펫이 둘 이상이면 깨어 있는 펫이 같은 모니터에서 자고 있는 펫을 깨우러 갑니다(설정 → 앱 동작 → "펫끼리 어울리기", 기본 켬. 방해 금지·숨김·전체화면 앱 중에는 하지 않음). 스킨에 `nudge`(깨우는 쪽)·`wake`(깨어나는 쪽) 모션이 있으면 그것을 쓰고, 없으면 `talk`·`attention`으로 대체합니다.
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
 
 ## 행동과 먼저 말 걸기

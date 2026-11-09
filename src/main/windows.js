@@ -5,6 +5,7 @@ import { createAgentHost } from './agent/agentHost.js';
 import { createAdapterFor } from './agent/factory.js';
 import { bodyMetrics, computePerch } from './perch.js';
 import { createPetEngine } from './petEngine.js';
+import { createSocial } from './social.js';
 import { needsSetupHint, SETUP_HINT_TEXT } from './setupHint.js';
 import { createNotifier } from './spontaneous.js';
 import { createWindowWatcher } from './windowWatcher.js';
@@ -812,6 +813,17 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   }
   const cursorTimer = noCursorPoll ? null : setInterval(sendCursor, 40);
 
+  // 펫끼리 어울리기: 깨어 있는 펫이 자고 있는 펫을 깨우러 간다. 방해 금지·숨김·전체화면 앱 중에는 하지 않는다.
+  const social = createSocial({
+    getPets: () => [...pets.values()].map((p) => ({ id: p.id, engine: p.engine })),
+    enabled: () => {
+      const g = store.get().general;
+      return g.petSocial && !g.doNotDisturb && visible && !suspended;
+    },
+    log: (m) => log('social', m),
+  });
+  social.start();
+
   const tickMs = (debug && Number(process.env.AIPET_NOTIFY_TICK_MS)) || 30_000;
   const tickTimer = setInterval(() => notifier.tick(), tickMs);
 
@@ -821,6 +833,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     powerMonitor.off('resume', rebuildAfterSessionReturn);
     for (const pet of pets.values()) pet.host.dispose();
     watcher.stop();
+    social.stop();
     clearInterval(tickTimer);
     if (cursorTimer) clearInterval(cursorTimer);
   });

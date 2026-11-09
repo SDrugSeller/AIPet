@@ -132,7 +132,8 @@ Renderer (오버레이 창, 전체 화면 크기, 투명)
 | `react` | 클릭/쓰다듬기 | 4~6 | X → idle | P1 |
 | `sit` | 휴식 | 4 | O | P2 |
 | `sleep` | 장시간 유휴 | 4~6 | O | P2 |
-| `wake` | sleep 해제 | 4~6 | X → idle | P2 |
+| `wake` | sleep 해제. 다른 펫이 깨웠을 때도 쓴다(1.1초, 깨운 펫 쪽을 봄). 없으면 `attention`으로 대체 | 4~6 | X → idle | P2 |
+| `nudge` | 자고 있는 다른 펫을 깨우는 쪽의 손짓(펫끼리 어울리기, `src/main/social.js`). 없으면 `talk`로 대체 | 4~6 | X → idle | P2 |
 | `climb` / `hang` | 화면·창 가장자리 | 6~8 | O | P2 |
 | `sit_on_window` | 활성 창 상단 (M5) | 4~6 | O | P2 |
 | `enter` / `exit` | 앱 시작/종료 | 6~8 | X | P2 |

@@ -191,6 +191,7 @@ test('행동/알림 설정: 범위와 형식을 검증한다', () => {
   assert.equal(s.get().behavior.sitOnWindows, true);
   assert.equal(s.get().spontaneous.breakReminder, false); // 먼저 말 거는 기능은 옵트인
   assert.equal(s.get().general.doNotDisturb, false);
+  assert.equal(s.get().general.petSocial, true, '펫끼리 어울리기는 기본 켬');
 
   s.update({ spontaneous: { breakAfterMin: 90, cooldownMin: 15 }, general: { doNotDisturb: true } });
   assert.equal(s.get().spontaneous.breakAfterMin, 90);
