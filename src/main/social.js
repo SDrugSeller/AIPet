@@ -3,11 +3,11 @@
 // 엔진 두 개를 함께 움직여야 해서 개별 엔진이 아니라 여기서 조정한다. 시계와 난수는 주입받아 테스트할 수 있다.
 
 /** 후보를 살피는 간격 */
-export const SOCIAL_TICK_MS = 8_000;
+export const SOCIAL_TICK_MS = 5_000;
 /** 같은 두 펫이 다시 어울리기까지 최소 간격 (방향과 무관. 깬 펫이 곧 다시 잠들어도 깨웠다 재웠다를 반복하지 않도록) */
 export const PAIR_COOLDOWN_MS = 5 * 60_000;
 /** 잠든 지 이만큼은 지나야 깨우러 간다 (막 잠든 펫을 바로 깨우지 않는다) */
-export const MIN_SLEEP_MS = 15_000;
+export const MIN_SLEEP_MS = 10_000;
 /** 후보 쌍이 있을 때 이번 차례에 실제로 가 볼 확률 */
 export const VISIT_CHANCE = 0.5;
 /** 방문이 이보다 길어지면 뭔가 잘못된 것으로 보고 상태를 풀어 준다 */
