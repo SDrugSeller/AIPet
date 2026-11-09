@@ -20,6 +20,8 @@ import { createWindowWatcher } from './windowWatcher.js';
  *   preloadPath: string,
  *   rendererPath: string,
  *   debug: boolean,
+ *   logging?: boolean,
+ *   log?: (tag: string, ...args: unknown[]) => void,
  *   store: ReturnType<typeof import('./store.js').createStore>,
  *   config: ReturnType<typeof import('./config.js').createConfig>,
  *   loadSkin: (name: string, tuning?: any) => Promise<any>,
@@ -27,7 +29,7 @@ import { createWindowWatcher } from './windowWatcher.js';
  *   openSettings: (tab?: string) => void,
  * }} opts
  */
-export function createOverlayManager({ preloadPath, rendererPath, debug, store, config, loadSkin, getMenuTemplate, openSettings }) {
+export function createOverlayManager({ preloadPath, rendererPath, debug, logging = false, log = () => {}, store, config, loadSkin, getMenuTemplate, openSettings }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
 
@@ -145,7 +147,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     focusSyncPending = false;
     const target = focusPetId ? pets.get(focusPetId) : null;
     const want = target && target.host.isOpen ? target.engine.pet.display : 0;
-    if (debug) console.log('[focus] sync want=', want, 'prev=', focusDisplay, 'order=', [...windows.keys()].join(','));
+    log('focus', 'sync want=', want, 'prev=', focusDisplay);
     for (const [id, win] of windows) {
       if (win.isDestroyed() || id === want) continue;
       if (win.isFocusable()) win.setFocusable(false);
@@ -287,13 +289,18 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       noticeTimer: null,
     });
 
+    let lastPetKey = '';
     pet.engine = createPetEngine({
       skin,
       area: (displayId) => areaOf(pet, displayId),
       emit: () => {
         const p = pet.engine.pet;
-        if (debug && !p.dragging) {
-          console.log('[pet]', pet.id, p.anim, p.facing, `display=${p.display}`, `x=${Math.round(p.x)}`, `y=${Math.round(p.y)}`, p.move ? JSON.stringify(p.move) : '');
+        if (logging && !p.dragging) {
+          const k = `${p.anim}|${p.display}`;
+          if (k !== lastPetKey) {
+            lastPetKey = k;
+            log('pet', pet.id, p.anim, `display=${p.display}`, `x=${Math.round(p.x)}`, `y=${Math.round(p.y)}`);
+          }
         }
         sendAll('pet:state', { id: pet.id, ...p });
         // 대화창이 열린 채 펫이 다른 모니터로 가면 키보드 포커스도 따라간다.
@@ -318,6 +325,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
         syncChatFocus();
       },
       isEnabled: () => true,
+      onLog: (msg) => log('agent', pet.id, msg),
       getPolicy: () => config.policy(),
       notify: () => {
         if (store.get().general.sound) shell.beep();
@@ -448,9 +456,10 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     win.setAlwaysOnTop(true, 'screen-saver');
     setClickThrough(win, true); // 기본은 클릭 통과
     cursorSent.delete(display.id);
-    if (debug) {
-      win.on('focus', () => console.log('[focus] window', display.id, 'GOT focus'));
-      win.on('blur', () => console.log('[focus] window', display.id, 'LOST focus'));
+    if (logging) {
+      win.on('focus', () => log('focus', 'window', display.id, 'GOT focus'));
+      win.on('blur', () => log('focus', 'window', display.id, 'LOST focus'));
+      log('window', '오버레이 창 만듦', display.id, JSON.stringify(display.bounds), `@${display.scaleFactor}x`);
     }
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -458,9 +467,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
       applyBounds(win, display.bounds);
       if (visible && !suspended) win.showInactive();
     });
+    if (logging) {
+      win.webContents.on('console-message', (e) => log('renderer', display.id, e.message));
+      win.webContents.on('did-fail-load', (_e, code, desc) => log('error', 'load fail', display.id, code, desc));
+      win.webContents.on('render-process-gone', (_e, d) => log('error', 'renderer gone', display.id, d.reason));
+    }
     if (debug) {
-      win.webContents.on('console-message', (e) => console.log(`[renderer ${display.id}]`, e.message));
-      win.webContents.on('did-fail-load', (_e, code, desc) => console.log(`[load fail ${display.id}]`, code, desc));
       // AIPET_CAPTURE_DIR 지정 시 몇 초 뒤 각 창의 렌더링 결과를 PNG로 저장 (검증용)
       if (process.env.AIPET_CAPTURE_DIR) {
         win.once('show', () =>
@@ -480,6 +492,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   /** 모니터 추가/제거/해상도 변경 시 창 목록과 위치를 맞춘다. */
   function syncDisplays() {
     const displays = screen.getAllDisplays();
+    log('display', '구성', displays.map((d) => `${d.id}:${d.bounds.x},${d.bounds.y} ${d.bounds.width}x${d.bounds.height} @${d.scaleFactor}x`).join(' | '));
     const live = new Set(displays.map((d) => d.id));
 
     for (const [id, win] of windows) {
@@ -515,13 +528,13 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const id = findDisplayId(e.sender);
     const bounds = id === null ? null : boundsOf(id);
     if (!bounds) throw new Error('알 수 없는 창');
-    return { displayId: id, bounds, pets: [...pets.values()].map(descriptor), debug };
+    return { displayId: id, bounds, pets: [...pets.values()].map(descriptor), debug, logging };
   });
 
   ipcMain.on('pet:click', (e, petId) => {
     const pet = petOf(e, petId);
     if (!pet) return;
-    if (debug) console.log('[pet:click]', pet.id);
+    log('click', pet.id, pet.host.isOpen ? '대화창 닫기' : '대화창 열기');
     pet.engine.poke();
     pet.host.setOpen(!pet.host.isOpen);
   });
@@ -536,12 +549,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const pet = petOf(e, petId);
     if (!pet || !pet.host.isOpen) return;
     focusPetId = pet.id;
-    if (debug) {
+    if (logging) {
       // 입력칸 클릭과 그 뒤의 포커스 결과를 짝지어 남긴다 (none이면 포커스가 앱 밖의 다른 창에 있다)
       const owner = () => (BrowserWindow.getFocusedWindow() ? `overlay ${findDisplayId(BrowserWindow.getFocusedWindow()?.webContents ?? e.sender)}` : 'none(다른 앱)');
       const win = windows.get(findDisplayId(e.sender) ?? -1);
-      console.log('[focus] 입력칸 클릭: 클릭한 창 isFocused=', win?.isFocused(), '현재 포커스=', owner());
-      for (const ms of [150, 600]) setTimeout(() => console.log(`[focus] 입력칸 클릭 +${ms}ms: 포커스=`, owner()), ms);
+      log('focus', '입력칸 클릭: 클릭한 창 isFocused=', win?.isFocused(), '현재 포커스=', owner());
+      setTimeout(() => log('focus', '입력칸 클릭 +400ms: 포커스=', owner()), 400);
     }
     syncChatFocus();
   });
@@ -578,13 +591,13 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     const inside = screen.getAllDisplays().some((d) => c.x >= d.bounds.x && c.x < d.bounds.x + d.bounds.width && c.y >= d.bounds.y && c.y < d.bounds.y + d.bounds.height);
     if (!inside && !dragOutsideLogged) {
       dragOutsideLogged = true;
-      console.log('[drag] 커서가 모든 모니터 범위 밖', JSON.stringify(c), '→ 가까운 모니터', screen.getDisplayNearestPoint(c).id);
+      log('drag', '커서가 모든 모니터 범위 밖', JSON.stringify(c), '→ 가까운 모니터', screen.getDisplayNearestPoint(c).id);
     } else if (inside) {
       dragOutsideLogged = false;
     }
-    if (now - dragLogAt > 2000) {
+    if (now - dragLogAt > 3000) {
       dragLogAt = now;
-      console.log('[drag] 따라가는 중', `cursor=${c.x},${c.y}`, `pet=${Math.round(p.x)},${Math.round(p.y)}`, `display=${p.display}`);
+      log('drag', '따라가는 중', `cursor=${c.x},${c.y}`, `pet=${Math.round(p.x)},${Math.round(p.y)}`, `display=${p.display}`);
     }
   }
 
@@ -594,7 +607,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
     if (!pet) return stopDrag();
     const p = pet.engine.pet;
     const c = screen.getCursorScreenPoint();
-    if (debug) dragDiag(c, p);
+    if (logging) dragDiag(c, p);
     const before = { x: p.x, y: p.y, display: p.display };
     // 펫은 커서가 있는 모니터로 옮겨 간다 (커서와 같은 모니터 좌표계에서 계산).
     p.display = screen.getDisplayNearestPoint(c).id;
@@ -615,7 +628,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
   ipcMain.on('pet:dragging', (e, petId, dragging) => {
     const pet = petOf(e, petId);
     if (!pet || typeof dragging !== 'boolean') return;
-    if (debug) console.log('[drag] pet:dragging', dragging, JSON.stringify(screen.getCursorScreenPoint()));
+    log('drag', dragging ? '잡음' : '놓음', JSON.stringify(screen.getCursorScreenPoint()));
     if (dragging) {
       stopDrag();
       pet.engine.startDrag();
@@ -740,8 +753,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
               pet.metrics,
             )
           : null;
-      if (debug && rect && info) {
-        console.log('[window]', pet.id, info.proc, JSON.stringify(rect), '→', perch ? `올라갈 수 있음 top=${perch.top} display=${perch.display}` : '올라갈 수 없음');
+      if (logging && rect && info) {
+        log('window', pet.id, info.proc, JSON.stringify(rect), '→', perch ? `올라갈 수 있음 top=${perch.top} display=${perch.display}` : '올라갈 수 없음');
       }
       pet.engine.setTarget(perch);
     }
@@ -749,11 +762,11 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, store, 
 
   const watcher = createWindowWatcher({
     onChange: (info) => {
-      if (debug) console.log('[watch] 활성 창', info.proc ?? '(없음)', info.cls ?? '', info.fs ? 'fullscreen' : '', info.busy ? 'busy' : '');
+      log('watch', '활성 창', info.proc ?? '(없음)', info.cls ?? '', info.fs ? 'fullscreen' : '', info.busy ? 'busy' : '');
       foreground = info;
       applyForeground();
     },
-    onLog: (msg) => debug && console.log('[watch]', msg),
+    onLog: (msg) => log('watch', msg),
   });
 
   // --- 점검 ---

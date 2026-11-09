@@ -18,9 +18,14 @@ npm run lint
 ## 설치 파일 만들기 (Windows)
 
 ```
-npm run pack     # dist/win-unpacked/ (설치 없이 실행해 볼 때)
-npm run dist     # dist/AIPet-Setup-<버전>.exe (NSIS 설치 파일)
+npm run pack         # dist/win-unpacked/ (설치 없이 실행해 볼 때)
+npm run dist         # 일반 배포판 + 디버그판 둘 다
+npm run dist:release # 일반 배포판만: dist/AIPet-Setup-<버전>.exe
+npm run dist:debug   # 디버그판만:   dist/debug/AIPet-Setup-<버전>-debug.exe
 ```
+
+- **디버그판**은 일반판과 같은 코드에 동작 로그 파일만 켠 설치 파일입니다(같은 앱이라 일반판 위에 덮어 설치할 수 있고, 설정·스킨도 그대로 씁니다). 로그는 `%APPDATA%\AIPet\logs\aipet.log`(1MB를 넘으면 `aipet.1.log`로 넘기므로 최대 약 2MB)에 쌓이고, 펫 우클릭/트레이 메뉴의 **"동작 로그 폴더 열기 (디버그 빌드)"**로 폴더를 열 수 있습니다. 일반판은 로그를 남기지 않습니다.
+- 로그에는 시작 정보(버전, 모니터 구성·배율), 펫 모션 변화, 포커스 이동, 드래그의 시작·끝과 이상 상황, 활성 창의 **프로세스 이름과 위치**, AI 연결 점검·질문 보냄·응답 끝·오류·도구 요청의 허용/거부가 남습니다. **대화 내용과 도구 입력(명령, 파일 내용)은 남기지 않습니다.** 같은 줄은 한 번만 쓰고 1초에 40줄을 넘기면 버립니다. 로그를 남에게 보내기 전에 활성 창 이름이 들어 있다는 점을 알아 두세요.
 
 - 설치본에는 `src/`, `personas/`, `skins/default`만 들어가며 개인용 스킨(`skins/genba-cat`)은 제외됩니다.
 - 코드 서명이 없어서 다른 PC에서 SmartScreen 경고가 뜰 수 있습니다. 앱 아이콘은 임시입니다(`build/icon.png`).
@@ -57,7 +62,7 @@ npm run dist     # dist/AIPet-Setup-<버전>.exe (NSIS 설치 파일)
   - **웹 검색 허용**(설정 → 권한 탭, Claude Code·Codex·Gemini 화면에 같은 공통 설정으로 나옴, 기본 꺼짐): Claude Code는 "웹 검색" 승인 카드를 묻지 않고 허용합니다(웹 페이지 가져오기 `WebFetch`는 주소로 정보가 새어 나갈 수 있어 계속 묻습니다). Codex CLI는 읽기 전용 그대로 실시간 웹 검색을 켜고(`-c web_search="live"`), Gemini CLI는 읽기 전용(plan) 모드에서 허용되는 검색을 써도 된다고 모델에게 알려 줍니다. 끄면 Claude Code는 매번 묻고, Codex/Gemini에게는 검색하지 말라고 안내합니다(Codex는 `~/.codex` 설정을 건드리지 않음). **Anthropic API와 Ollama/OpenAI 호환 연결은 검색할 수 없습니다.** 검색어는 외부로 나갑니다.
   - 승인 요청이 오면 펫이 놀란 표정을 짓고 알림음이 납니다. 다른 앱을 쓰는 중이어도 포커스를 가져가지 않습니다.
 - 환경변수(연결에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `ANTHROPIC_API_KEY`
-- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 로그 출력. `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`, `AIPET_SKIN`(모든 연결에 한 스킨을 강제)
+- 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 시험용 환경변수 사용, 동작 로그(디버그판과 같은 파일, 콘솔에도 출력). `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`, `AIPET_SKIN`(모든 연결에 한 스킨을 강제)
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
 
 ## 행동과 먼저 말 걸기

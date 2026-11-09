@@ -12,7 +12,7 @@ const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
 const layer = /** @type {HTMLElement} */ (document.getElementById('layer'));
 const template = /** @type {HTMLTemplateElement} */ (document.getElementById('pet-ui'));
 
-const { displayId, bounds: initialBounds, pets: initialPets, debug } = await api.init();
+const { displayId, bounds: initialBounds, pets: initialPets, debug, logging } = await api.init();
 
 let origin = { x: initialBounds.x, y: initialBounds.y };
 
@@ -234,7 +234,7 @@ function loop() {
 let lastRealMove = -Infinity;
 
 /** 디버그 전용: 드래그 수명 주기 기록 @param {...any} a */
-const dlog = (...a) => debug && console.log('[drag:renderer]', ...a);
+const dlog = (...a) => logging && console.log('[drag:renderer]', ...a);
 let noButtonLogged = false;
 
 window.addEventListener('pointermove', (e) => {
@@ -266,7 +266,7 @@ api.onCursor((/** @type {{ x: number, y: number } | null} */ c) => {
   lastPointer = { x: c.x - origin.x, y: c.y - origin.y };
   if (!dragging && !pressed) {
     const want = wantsMouse(lastPointer.x, lastPointer.y);
-    if (debug && want !== interactive) console.log('[cursor-fallback]', want ? '펫 위: 마우스 받기' : '펫 밖: 클릭 통과');
+    if (logging && want !== interactive) console.log('[cursor-fallback]', want ? '펫 위: 마우스 받기' : '펫 밖: 클릭 통과');
     setInteractive(want);
   }
 });

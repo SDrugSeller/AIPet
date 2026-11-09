@@ -1,9 +1,11 @@
 // @ts-check
-import { app, protocol, safeStorage } from 'electron';
+import { app, protocol, safeStorage, screen, shell } from 'electron';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConfig } from './config.js';
+import { createLogger } from './logger.js';
 import { buildMenuTemplate } from './menu.js';
 import { createPersonaStore } from './personas.js';
 import { createSettingsWindow } from './settingsWindow.js';
@@ -27,6 +29,31 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     registerSkinProtocol();
     const userData = app.getPath('userData');
+
+    // 디버그 빌드(npm run dist:debug)는 package.json에 aipetBuild:"debug"가 들어가 있다. AIPET_DEBUG=1도 같은 모드다.
+    /** @type {{ version?: string, aipetBuild?: string }} */
+    let pkg = {};
+    try {
+      pkg = JSON.parse(fs.readFileSync(path.join(here, '../../package.json'), 'utf8'));
+    } catch {
+      // 버전을 몰라도 동작에는 영향이 없다
+    }
+    // debug: 개발용 점검(히트박스 표시, 시험용 환경변수). logging: 동작 로그 파일. 디버그 빌드는 로그만 켠다.
+    const debug = process.env.AIPET_DEBUG === '1';
+    const logging = debug || pkg.aipetBuild === 'debug';
+    const logDir = path.join(userData, 'logs');
+    const logger = logging ? createLogger({ file: path.join(logDir, 'aipet.log') }) : null;
+    /** @param {string} tag @param {...unknown} args */
+    const log = (tag, ...args) => logger?.log(tag, ...args);
+    if (logger) {
+      const displays = screen.getAllDisplays().map((d) => `${d.id}:${d.bounds.x},${d.bounds.y} ${d.bounds.width}x${d.bounds.height} @${d.scaleFactor}x`);
+      log('start', `AIPet ${pkg.version ?? '?'} (${pkg.aipetBuild === 'debug' ? '디버그 빌드' : '환경변수 디버그'})`, `electron ${process.versions.electron}`, `${os.type()} ${os.release()}`, app.isPackaged ? 'packaged' : 'dev');
+      log('start', '모니터', displays.join(' | '));
+      process.on('uncaughtException', (e) => log('error', 'uncaughtException', e?.stack ?? e));
+      process.on('unhandledRejection', (e) => log('error', 'unhandledRejection', e instanceof Error ? (e.stack ?? e.message) : e));
+      app.on('before-quit', () => log('exit', '종료'));
+    }
+
     // 사용자가 추가하는 스킨 폴더: userData/skins/<이름>/skin.json (설정 창에서 폴더를 열 수 있다)
     const userSkins = path.join(userData, 'skins');
     try {
@@ -67,12 +94,15 @@ if (!app.requestSingleInstanceLock()) {
           store.update({ connections: store.get().connections.map((c) => (c.id === connectionId ? { ...c, persona: personaId } : c)) }),
         openSettings: (tab) => settings.open(tab),
         refreshAll: manager.refreshAll,
+        openLogs: logger ? () => void shell.openPath(logDir) : undefined,
       });
 
     manager = createOverlayManager({
       preloadPath: path.join(here, '../preload/preload.cjs'),
       rendererPath: path.join(here, '../renderer/index.html'),
-      debug: process.env.AIPET_DEBUG === '1',
+      debug,
+      logging,
+      log,
       store,
       config,
       // AIPET_SKIN을 주면 모든 연결이 그 스킨을 쓴다 (디버그/검증용)

@@ -254,7 +254,7 @@ AIPet/
 ## 12. 다음 작업 (진행 순서)
 
 1. **M6 패키징** — 구현 완료, 이 PC에서 검증함 (남은 것은 아래 "남은 확인")
-   - `electron-builder` 도입. `npm run pack`(폴더만) / `npm run dist`(NSIS 설치 파일, `dist/AIPet-Setup-<버전>.exe`). 설정은 `package.json`의 `build`: `files`를 허용 목록으로 지정(`src/`, `personas/`, `skins/default`, `skins/skin.schema.json`). **`skins/genba-cat/`, `tools/`, `tests/`, `docs/`는 포함되지 않는다**(asar 목록으로 확인. 단 이 작업 폴더에는 genba-cat이 원래 없어서, 있을 때의 제외는 허용 목록 구조로만 보장됨).
+   - `electron-builder` 도입. `npm run pack`(폴더만) / `npm run dist`(NSIS 설치 파일, `dist/AIPet-Setup-<버전>.exe`). 0.1.1부터 `npm run dist`는 일반판과 디버그판(`dist/debug/AIPet-Setup-<버전>-debug.exe`, `tools/dist.mjs`)을 둘 다 만든다. 디버그판은 빌드 때 `package.json`에 `aipetBuild:"debug"`를 넣을 뿐 코드는 같고, 앱이 시작할 때 이 값을 읽어 `src/main/logger.js`로 `userData/logs/aipet.log`에 동작 로그를 남긴다(히트박스 표시 같은 개발용 `AIPET_DEBUG`와는 별개). 설정은 `package.json`의 `build`: `files`를 허용 목록으로 지정(`src/`, `personas/`, `skins/default`, `skins/skin.schema.json`). **`skins/genba-cat/`, `tools/`, `tests/`, `docs/`는 포함되지 않는다**(asar 목록으로 확인. 단 이 작업 폴더에는 genba-cat이 원래 없어서, 있을 때의 제외는 허용 목록 구조로만 보장됨).
    - 확인한 것 (빈 프로필, 무인 설치): (a) 스킨 경로와 `aipet-skin://` 프로토콜 정상, (b) 말투 기본 파일 복사 정상, (c) 트레이/아이콘 생성 정상, (d) 상주 PowerShell 도우미 정상(활성 창 감지 로그 확인), (f) `claude` 탐색 정상(VS Code 확장 바이너리) 및 실제 대화 think→talk→done, 설정 창 표시. 제거 후 설치 폴더와 레지스트리 항목 잔여물 없음.
    - 아이콘은 default 스킨에서 만든 임시 `build/icon.png`(`npx electron tools/make-icon.cjs`). 최종 캐릭터가 정해지면 교체.
    - 개발 환경 주의: 셸에 `ELECTRON_RUN_AS_NODE=1`이 설정돼 있으면(예: VS Code 터미널) `npx electron`/`electron-builder` 실행이 일반 Node로 동작해 실패한다. `env -u ELECTRON_RUN_AS_NODE`로 해제하고 실행한다.

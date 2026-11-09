@@ -25,6 +25,7 @@ const MAX_LOG = 20;
  *   notify?: () => void,
  *   onSelect?: (adapterId: string) => void,
  *   onTaskFinished?: (result: { ok: boolean, text: string }) => void,
+ *   onLog?: (message: string) => void,
  *   preferred?: string | null,
  * }} opts
  */
@@ -38,8 +39,13 @@ export function createAgentHost({
   notify,
   onSelect,
   onTaskFinished,
+  onLog = () => {},
   preferred = null,
 }) {
+  // 동작 로그용 한 줄 요약. 대화 내용이나 도구 입력 본문은 남기지 않는다 (이름·결과·길이만).
+  /** @param {string} m */
+  const short = (m) => (m.length > 160 ? `${m.slice(0, 160)}…` : m).replace(/\s+/g, ' ');
+
   /** @type {Map<string, import('./adapter.js').DetectResult>} */
   const detected = new Map();
   /** 지금 쓰는 백엔드 */
@@ -134,6 +140,7 @@ export function createAgentHost({
       }),
     );
     autoSelect();
+    onLog(`연결 점검: ${adapters.map((a) => { const d = detected.get(a.id); return `${a.id}=${d?.ok ? 'ok' : `불가(${short(String(d?.reason ?? ''))})`}`; }).join(', ')} / 사용=${selected ?? '없음'}`);
     emitState();
   }
 
@@ -179,6 +186,7 @@ export function createAgentHost({
     const adapter = running;
     if (!adapter) return;
     const d = decide({ name: ev.name, input: ev.input }, getPolicy());
+    onLog(`도구 요청 ${ev.name} → ${d.action === 'ask' ? '사용자에게 물음' : d.action === 'allow' ? (d.auto ? '자동 허용' : '허용') : `거부${d.reason ? ` (${short(d.reason)})` : ''}`}`);
     if (d.action !== 'ask') {
       // 설정으로 묻지 않고 허용한 일은 사용자가 알 수 있게 대화창에 한 줄 남긴다 (모르는 사이에 실행되지 않도록)
       if (d.action === 'allow' && d.auto) markTrace(ev.name, ev.input);
@@ -222,17 +230,20 @@ export function createAgentHost({
         break;
       }
       case 'session':
+        onLog(`대화 구분선: ${short(ev.text)}`);
         pushLog({ role: 'session', text: ev.text }); // 이미 broadcast됨
         break;
       case 'trace':
         pushLog({ role: 'trace', text: ev.text }); // 어댑터가 알린 자동 실행의 흔적 (이미 broadcast됨)
         break;
       case 'done':
+        onLog(ev.aborted ? '응답 중단됨' : '응답 끝');
         turn.ok = true;
         anim = '';
         engine.setAgentAnim('done', { once: true });
         break;
       case 'error':
+        onLog(`오류: ${short(ev.message)}`);
         turn.ok = false;
         turn.text = ev.message;
         pushLog({ role: 'error', text: ev.message });
@@ -270,6 +281,7 @@ export function createAgentHost({
       }
 
       running = adapter;
+      onLog(`질문 보냄 (${adapter.id}, ${text.length}자)`);
       for await (const ev of adapter.send(text)) {
         if (ev.type === 'done' || ev.type === 'error') finished = true;
         handle(ev);
@@ -308,6 +320,7 @@ export function createAgentHost({
     respondPermission(id, allow) {
       if (!pending.has(id)) return;
       pending.delete(id);
+      onLog(`사용자 응답: ${allow ? '허용' : '거부'}`);
       running?.respondPermission(id, allow, allow ? undefined : '사용자가 거부했어요. 다른 방법으로 우회하지 말아 주세요.');
       broadcast('perm:resolved', { id, allow });
       setAnim(pending.size ? 'attention' : 'work');
@@ -315,6 +328,7 @@ export function createAgentHost({
     },
 
     abort() {
+      onLog('사용자가 중단');
       turn.aborted = true;
       running?.abort();
       clearPending();
@@ -329,6 +343,7 @@ export function createAgentHost({
       if (busy) return false;
       const lastMark = log.map((e) => e.role).lastIndexOf('session');
       if (!log.slice(lastMark + 1).some((e) => e.role === 'user')) return false;
+      onLog('새 대화');
       for (const a of adapters) a.reset?.();
       markSession('새 대화를 시작했어요 (이전 대화 내용은 기억하지 않아요)');
       emitState();

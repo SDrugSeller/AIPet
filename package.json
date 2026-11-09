@@ -1,6 +1,6 @@
 {
   "name": "aipet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "화면 위에 떠다니는 AI 에이전트 연동 데스크톱 펫",
   "private": true,
   "type": "module",
@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "test": "node --test --test-timeout=30000",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win nsis"
+    "dist": "node tools/dist.mjs",
+    "dist:release": "node tools/dist.mjs release",
+    "dist:debug": "node tools/dist.mjs debug"
   },
   "author": "AIPet",
   "build": {

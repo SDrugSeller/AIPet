@@ -18,10 +18,11 @@ import { KINDS } from '../shared/connections.js';
  *   selectPersona: (connectionId: string, personaId: string) => void,
  *   openSettings: (tab?: string) => void,
  *   refreshAll: () => Promise<void>,
+ *   openLogs?: () => void,
  * }} deps
  * @returns {Electron.MenuItemConstructorOptions[]}
  */
-export function buildMenuTemplate({ petId, isVisible, setVisible, isDnd, setDnd, connections, statuses, setConnectionEnabled, listPersonas, selectPersona, openSettings, refreshAll }) {
+export function buildMenuTemplate({ petId, isVisible, setVisible, isDnd, setDnd, connections, statuses, setConnectionEnabled, listPersonas, selectPersona, openSettings, refreshAll, openLogs }) {
   const conns = connections();
   const status = statuses();
   const personas = listPersonas();
@@ -65,6 +66,7 @@ export function buildMenuTemplate({ petId, isVisible, setVisible, isDnd, setDnd,
     ...shown.map(personaMenu),
     { type: 'separator' },
     { label: '설정…', click: () => openSettings() },
+    ...(openLogs ? [{ label: '동작 로그 폴더 열기 (디버그 빌드)', click: openLogs }] : []),
     { label: '종료', click: () => app.quit() },
   ];
 }
