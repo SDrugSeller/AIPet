@@ -3,6 +3,7 @@
 // API 키 같은 비밀은 OS 키체인(Electron safeStorage)으로 암호화해서 저장하며, 렌더러에는 절대 보내지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { SLEEP_SPOT_DEFAULT, SLEEP_SPOT_MODES } from './sleepSpot.js';
 import { SLEEP_AFTER_DEFAULT_SEC, SLEEP_AFTER_MAX_SEC, SLEEP_AFTER_MIN_SEC } from '../shared/sleep.js';
 import { isValidConnection, keySecretName, newConnection, validateConnections } from '../shared/connections.js';
 
@@ -51,6 +52,8 @@ export const DEFAULTS = {
     sleepAfterSec: SLEEP_AFTER_DEFAULT_SEC,
     /** 잠들지 않는다 */
     neverSleep: false,
+    /** 잠잘 때 가는 자리: right(오른쪽 끝) | left(왼쪽 끝) | center(가운데) | here(있던 자리에서 그대로) */
+    sleepSpot: SLEEP_SPOT_DEFAULT,
   },
   spontaneous: {
     /** 먼저 말 걸기 전체 스위치. 끄면 아래 항목이 모두 동작하지 않는다. (AI를 호출하지 않으므로 토큰은 쓰지 않는다) */
@@ -85,6 +88,8 @@ export const DEFAULTS = {
 
 /** @param {unknown} v */
 const isBool = (v) => typeof v === 'boolean';
+/** @param {readonly string[]} allowed */
+const oneOf = (allowed) => (/** @type {unknown} */ v) => typeof v === 'string' && allowed.includes(v);
 /** @param {number} max */
 const str = (max) => (/** @type {unknown} */ v) => typeof v === 'string' && v.length <= max;
 /** @param {any} v */
@@ -126,7 +131,7 @@ const SPEC = {
   connections: validateConnections,
   skinTuning,
   permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, autoAllowEdit: isBool, autoAllowShell: isBool, autoAllowFetch: isBool, codexWrite: isBool, workDir: str(1000) },
-  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool },
+  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool, sleepSpot: oneOf(SLEEP_SPOT_MODES) },
   spontaneous: {
     enabled: isBool,
     notifyDone: isBool,

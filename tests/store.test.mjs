@@ -204,6 +204,22 @@ test('잠들기 설정: 기본 60초, 10~3600초 정수만 저장하고 잠들�
   assert.equal(s.get().behavior.neverSleep, true);
 });
 
+test('잠자는 자리 설정: 기본은 오른쪽 끝, 정해진 네 값만 저장한다', () => {
+  const { file } = tmpFile();
+  const s = open(file);
+  assert.equal(s.get().behavior.sleepSpot, 'right');
+  for (const ok of ['left', 'center', 'here', 'right']) {
+    s.update({ behavior: { sleepSpot: ok } });
+    assert.equal(s.get().behavior.sleepSpot, ok);
+  }
+  s.update({ behavior: { sleepSpot: 'left' } });
+  for (const bad of ['top', '', 5, null, true]) {
+    s.update({ behavior: { sleepSpot: bad } });
+    assert.equal(s.get().behavior.sleepSpot, 'left', `거부: ${String(bad)}`);
+  }
+  assert.equal(open(file).get().behavior.sleepSpot, 'left', '다시 열어도 유지');
+});
+
 test('행동/알림 설정: 범위와 형식을 검증한다', () => {
   const { file } = tmpFile();
   const s = open(file);

@@ -6,6 +6,7 @@ import { createAdapterFor } from './agent/factory.js';
 import { bodyMetrics, computePerch } from './perch.js';
 import { createPetEngine } from './petEngine.js';
 import { createSocial } from './social.js';
+import { sleepSpotX } from './sleepSpot.js';
 import { needsSetupHint, SETUP_HINT_TEXT } from './setupHint.js';
 import { createNotifier } from './spontaneous.js';
 import { createWindowWatcher } from './windowWatcher.js';
@@ -313,6 +314,21 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
         if (focusPetId === pet.id && pet.host.isOpen && focusDisplay !== p.display) syncChatFocus();
       },
       sleepAfterMs,
+      // 잠잘 때는 정해진 자리(설정 → 행동)까지 가서 같은 모니터의 다른 펫들과 나란히 잔다.
+      sleepSpot: () => {
+        const mode = store.get().behavior.sleepSpot;
+        const me = pet.engine.pet;
+        const { bodyLeft, bodyRight } = bodyMetrics(skin);
+        const taken = [];
+        for (const other of pets.values()) {
+          if (other === pet || other.engine.pet.display !== me.display) continue;
+          const x = other.engine.sleepX;
+          if (x !== null) taken.push(x);
+        }
+        const x = sleepSpotX({ mode, area: areaOf(pet, me.display), step: bodyLeft + bodyRight + 12, taken });
+        log('sleep', pet.id, '자러 감', mode, x === null ? '있던 자리' : `x=${Math.round(x)}`, `(자는/가는 펫 ${taken.length}마리)`);
+        return x;
+      },
     });
 
     const adapter = createAdapterFor(conn, { config, metaDir: config.metaDir });

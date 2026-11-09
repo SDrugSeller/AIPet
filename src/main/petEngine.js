@@ -29,9 +29,10 @@ const WAKE_MS = 1100;
  *   area: (displayId: number) => Area | null,
  *   emit: () => void,
  *   sleepAfterMs: number | (() => number),
+ *   sleepSpot?: () => number | null,
  * }} opts
  */
-export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleepAfterOpt }) {
+export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleepAfterOpt, sleepSpot }) {
   /** 마지막으로 건드린 뒤 잠들기까지의 시간(ms). 설정이 바뀌면 바로 반영되도록 매번 읽는다. 잠들지 않으면 Infinity */
   const sleepAfterMs = () => (typeof sleepAfterOpt === 'function' ? sleepAfterOpt() : sleepAfterOpt);
   /** 펫이 사라진 뒤(연결 삭제 등)에는 타이머가 남아 있어도 아무것도 하지 않는다. */
@@ -160,7 +161,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
   /** 쉬는 시간이 끝났을 때 다음 행동을 고른다. */
   function decide() {
     if (perched) return decidePerched();
-    if (Date.now() - lastActive > sleepAfterMs()) return enterSleep();
+    if (Date.now() - lastActive > sleepAfterMs()) return goSleep();
     if (target && target.display === pet.display && Date.now() - lastPerchEnd > PERCH_COOLDOWN_MS && Math.random() < PERCH_CHANCE) {
       return goToPerch();
     }
@@ -197,6 +198,25 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     if (Math.abs(x1 - pet.x) < 40) return enterIdle();
     startWalk(x1, enterIdle);
   }
+
+  /** 자러 가는 자리(발 x). 자리로 걸어가는 중에만 의미가 있다. */
+  /** @type {number | null} */
+  let sleepGoal = null;
+
+  /** 잠잘 시간이 됐다: 정해진 잠자는 자리가 있으면 거기까지 걸어가서 잔다. 없으면 있던 자리에서 잔다. */
+  function goSleep() {
+    const spot = area(pet.display) ? (sleepSpot?.() ?? null) : null;
+    if (spot === null || Math.abs(spot - pet.x) < 24) return enterSleep();
+    sleepGoal = spot;
+    startWalk(spot, () => {
+      // 걸어가는 사이 사용자가 건드렸으면 자지 않는다
+      if (Date.now() - lastActive > sleepAfterMs()) enterSleep();
+      else enterIdle();
+    });
+  }
+
+  /** 지금 자러 자리로 걸어가는 중인가 */
+  const headingToBed = () => sleepGoal !== null && pet.anim === 'walk' && pet.move?.kind === 'walk' && pet.move.x1 === sleepGoal;
 
   function enterSleep() {
     settle();
@@ -308,9 +328,15 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
       if (visiting) {
         endVisit('cancelled');
         enterIdle();
-      } else if (pet.anim === 'sleep') {
+      } else if (pet.anim === 'sleep' || headingToBed()) {
         enterIdle();
       }
+    },
+
+    /** 자고 있거나 자러 가는 곳(발 x). 아니면 null. 다른 펫이 같은 자리를 피하는 데 쓴다. */
+    get sleepX() {
+      if (pet.anim === 'sleep' && !pet.dragging) return pet.x;
+      return headingToBed() ? sleepGoal : null;
     },
 
     /** 자고 있는가 */

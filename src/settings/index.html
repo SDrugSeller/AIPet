@@ -211,6 +211,15 @@
           </label>
           <p class="muted" id="sleepNote"></p>
           <label class="row"><input type="checkbox" data-path="behavior.neverSleep" /> 잠들지 않기 <span class="muted">(켜면 위 시간은 쓰지 않아요)</span></label>
+          <label class="field">잠잘 때 가는 자리
+            <select data-path="behavior.sleepSpot">
+              <option value="right">오른쪽 끝</option>
+              <option value="left">왼쪽 끝</option>
+              <option value="center">가운데</option>
+              <option value="here">있던 자리에서 그대로</option>
+            </select>
+          </label>
+          <p class="muted">잠잘 시간이 되면 이 자리까지 걸어가서 잡니다. 같은 모니터의 펫이 여럿이면 그 자리에서부터 나란히 모여 자요. 모니터마다 따로 정해져요.</p>
         </section>
 
         <section>

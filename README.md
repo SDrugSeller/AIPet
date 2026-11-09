@@ -64,6 +64,7 @@ npm run dist:debug   # 디버그판만:   dist/debug/AIPet-Setup-<버전>-debug.
   - 승인 요청이 오면 펫이 놀란 표정을 짓고 알림음이 납니다. 다른 앱을 쓰는 중이어도 포커스를 가져가지 않습니다.
 - 환경변수(연결에 값이 없을 때의 기본값): `AIPET_CLAUDE_PATH`, `AIPET_OPENAI_BASE_URL`, `AIPET_OPENAI_MODEL`, `AIPET_OPENAI_KEY`, `ANTHROPIC_API_KEY`
 - 디버그(`AIPET_DEBUG=1`): 히트박스 표시, 시험용 환경변수 사용, 동작 로그(디버그판과 같은 파일, 콘솔에도 출력). `AIPET_START_DISPLAY`, `AIPET_SLEEP_AFTER_SEC`, `AIPET_AUTOTEST_MSG`, `AIPET_OPEN_SETTINGS`, `AIPET_CAPTURE_DIR`, `AIPET_FAKE_WINDOW="x,y,w,h"`(가짜 활성 창으로 올라가기 검증), `AIPET_TEST_NOTICE="문구"`(알림 말풍선), `AIPET_NOTIFY_TICK_MS`, `AIPET_SKIN`(모든 연결에 한 스킨을 강제)
+- **잠잘 자리**(설정 → 행동 → 잠들기): 잠들 때는 정해진 자리(기본 오른쪽 끝, 왼쪽 끝·가운데·있던 자리에서 그대로 중 선택)까지 걸어가서, 같은 모니터의 펫들과 나란히 모여 잡니다.
 - **잠들기**(설정 → 행동): 마지막으로 펫을 건드린(클릭, 대화) 뒤 기본 60초(10~3600초)가 지나면 잠듭니다. "잠들지 않기"도 고를 수 있습니다. 대화창을 열어 둔 동안과 AI가 일하는 동안에는 잠들지 않고, 끝난 때부터 다시 셉니다. 다른 펫이 깨운 펫은 이 시간의 2/3(기본 40초, 고정 비율)만 깨어 있다가 다시 잡니다. 모든 펫에 공통인 이런 옵션은 "행동" 탭에 모았습니다(활성 창 위에 올라가기, 전체화면 앱일 때 숨기기, 잠들기, 펫끼리 어울리기).
 - 펫이 둘 이상이면 깨어 있는 펫이 같은 모니터에서 자고 있는 펫을 깨우러 갑니다(설정 → 행동 → "펫끼리 어울리기", 기본 켬. 방해 금지·숨김·전체화면 앱 중에는 하지 않음). 스킨에 `nudge`(깨우는 쪽)·`wake`(깨어나는 쪽) 모션이 있으면 그것을 쓰고, 없으면 `talk`·`attention`으로 대체합니다.
 - 임시 스프라이트는 `node tools/gen-placeholder-skin.mjs`로 다시 만들 수 있습니다.
