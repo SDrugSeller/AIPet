@@ -1,6 +1,6 @@
 {
   "name": "aipet",
-  "version": "0.1.3",
+  "version": "0.1.2",
   "description": "화면 위에 떠다니는 AI 에이전트 연동 데스크톱 펫",
   "private": true,
   "type": "module",
