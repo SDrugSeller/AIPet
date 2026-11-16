@@ -1,7 +1,7 @@
 // @ts-check
 // skins/default 용 임시 스프라이트 시트(idle/walk/drag/drop/sleep)를 생성한다.
 // 실제 아트가 준비되면 같은 파일명의 PNG로 교체하면 된다.
-//   사용법: node tools/gen-placeholder-skin.mjs
+//   사용법: node tools/gen-placeholder-skin.mjs [시트 이름...]   (이름을 주면 그 시트만 다시 만든다. 예: door)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -149,6 +149,47 @@ function drawSweat(img, ox, x, y) {
   fill(img, [120, 190, 255], ellipse(x, y, 2.6, 4), ox, 0, 0.9);
 }
 
+
+/** 아치형 문 모양(왼쪽/오른쪽 곧은 변 + 위가 둥근 반원). bottom은 문 바닥 y, h는 전체 높이 */
+const arch = (/** @type {number} */ cx, /** @type {number} */ bottom, /** @type {number} */ hw, /** @type {number} */ h) => {
+  const cyc = bottom - h + hw;
+  return (/** @type {number} */ x, /** @type {number} */ y) => (y < cyc ? Math.hypot(x - cx, y - cyc) - hw : Math.max(Math.abs(x - cx) - hw, y - bottom));
+};
+/** 두 모양의 교집합 */
+const both = (/** @type {(x:number,y:number)=>number} */ a, /** @type {(x:number,y:number)=>number} */ b) => (/** @type {number} */ x, /** @type {number} */ y) => Math.max(a(x, y), b(x, y));
+
+const WOOD = [122, 75, 42];
+const LEAF = [185, 122, 69];
+const LEAF_DARK = [150, 96, 52];
+const LIGHT = [255, 233, 168];
+const LIGHT_HOT = [255, 248, 220];
+const KNOB = [255, 213, 74];
+
+/**
+ * 문 한 프레임. open은 열린 정도(0=닫힘, 1=활짝): 문짝이 왼쪽 경첩 쪽으로 접히며 안쪽의 따뜻한 빛이 드러난다.
+ * @param {Img} img @param {number} ox @param {number} open
+ */
+function drawDoor(img, ox, open) {
+  const bottom = FOOT;
+  // 문틀과 안쪽 빛
+  fill(img, WOOD, arch(CX, bottom + 1, 44, 120), ox, 0);
+  fill(img, LIGHT, arch(CX, bottom, 38, 112), ox, 0);
+  if (open > 0) fill(img, LIGHT_HOT, ellipse(CX + 6, bottom - 62, 20 * open, 44 * open), ox, 0, 0.85);
+  // 문짝: 안쪽 영역 안에서 왼쪽 경첩에서부터 열린 만큼 좁아진다
+  const left = CX - 38;
+  const leafW = 76 * (1 - 0.84 * open);
+  const inner = arch(CX, bottom, 38, 112);
+  fill(img, LEAF, both(inner, (x) => x - (left + leafW)), ox, 0);
+  fill(img, LEAF_DARK, both(inner, (x) => Math.max(x - (left + leafW), left + leafW - 5 - x)), ox, 0);
+  fill(img, KNOB, ellipse(left + Math.max(6, leafW - 9), bottom - 50, 3, 3), ox, 0);
+  // 바닥에 번지는 빛
+  if (open > 0.15) fill(img, LIGHT, ellipse(CX, bottom - 1, 40 * open, 4), ox, 0, 0.55 * open);
+  if (open > 0.85) {
+    drawSparkle(img, ox, CX - 26, bottom - 96, 4, 0.9);
+    drawSparkle(img, ox, CX + 24, bottom - 74, 3, 0.8);
+  }
+}
+
 const tau = Math.PI * 2;
 
 /** @type {Record<string, { frames: number, draw: (img: Img, ox: number, i: number, n: number) => void }>} */
@@ -237,6 +278,11 @@ const sheets = {
       drawExclaim(img, ox, CX - 8, 2 + (1 - hop) * 3);
     },
   },
+  // 모니터 사이를 오갈 때 펫 뒤에 겹쳐 그려지는 문. 앞 6장은 열리는 그림(닫힘 → 활짝), 뒤 4장은 닫히는 그림(skin.json의 door)
+  door: {
+    frames: 10,
+    draw: (img, ox, i) => drawDoor(img, ox, [0, 0.2, 0.45, 0.7, 0.9, 1, 0.75, 0.5, 0.22, 0][i]),
+  },
   sleep: {
     frames: 4,
     draw: (img, ox, i, n) => {
@@ -293,7 +339,9 @@ function encodePng(img) {
 }
 
 mkdirSync(outDir, { recursive: true });
+const only = process.argv.slice(2);
 for (const [name, { frames, draw }] of Object.entries(sheets)) {
+  if (only.length && !only.includes(name)) continue;
   const img = makeImg(FW * frames, FH);
   for (let i = 0; i < frames; i++) draw(img, i * FW, i, frames);
   writeFileSync(path.join(outDir, `${name}.png`), encodePng(img));

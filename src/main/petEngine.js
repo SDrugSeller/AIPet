@@ -29,9 +29,14 @@ const DOOR_FADE_MS = 250;
 const DOOR_HEIGHT_RATIO = 0.45;
 /** 나오는 문이 열려 있는 시간(나타난 뒤) */
 const DOOR_EMERGE_MS = 600;
-/** 문 크기: 몸 높이에 대한 비율, 높이 대비 너비 */
+/** 스킨에 문 그림이 없을 때(코드로 그린 문) 크기: 몸 높이에 대한 비율, 높이 대비 너비 */
 const DOOR_BODY_RATIO = 1.15;
 const DOOR_ASPECT = 0.55;
+/** 펫이 스스로 다른 모니터로 건너가기: 한 번 건너간 뒤 최소로 쉬는 시간, 쉬는 동안 다음 행동을 고를 때마다 건너갈 확률 */
+const HOP_COOLDOWN_MS = 120_000;
+const HOP_CHANCE = 0.15;
+/** 다른 모니터의 자는 펫을 깨우러 갈 때, 문은 자는 펫에서 이만큼(px) 떨어진 곳에 연다 */
+const VISIT_DOOR_DISTANCE = 260;
 
 /**
  * @typedef {{ left: number, right: number, ground: number, top?: number }} Area
@@ -43,9 +48,13 @@ const DOOR_ASPECT = 0.55;
  *   emit: () => void,
  *   sleepAfterMs: number | (() => number),
  *   sleepSpot?: () => number | null,
+ *   hopTargets?: () => number[],
+ *   hopCooldownMs?: number,
  * }} opts
+ *   hopTargets: 펫이 스스로 건너갈 수 있는 다른 모니터들(없으면 빈 배열). 주지 않으면 스스로 건너가지 않는다.
+ *   hopCooldownMs: 한 번 건너간 뒤 다시 건너가기까지 최소로 쉬는 시간 (기본 2분. 시험용으로 줄일 수 있다)
  */
-export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleepAfterOpt, sleepSpot }) {
+export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleepAfterOpt, sleepSpot, hopTargets, hopCooldownMs = HOP_COOLDOWN_MS }) {
   /** 마지막으로 건드린 뒤 잠들기까지의 시간(ms). 설정이 바뀌면 바로 반영되도록 매번 읽는다. 잠들지 않으면 Infinity */
   const sleepAfterMs = () => (typeof sleepAfterOpt === 'function' ? sleepAfterOpt() : sleepAfterOpt);
   /** 펫이 사라진 뒤(연결 삭제 등)에는 타이머가 남아 있어도 아무것도 하지 않는다. */
@@ -74,12 +83,17 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
 
   const { bodyLeft, bodyRight, bodyUp } = bodyMetrics(skin);
 
-  /** 다른 모니터로 가는 중인 이동. done: 도착했거나 취소됐을 때 부를 함수들 */
-  /** @type {{ display: number, done: ((reason: 'arrived' | 'cancelled') => void)[] } | null} */
+  /**
+   * 다른 모니터로 가는 이동. done: 착지했거나 취소됐을 때 부를 함수들, x: 나오는 문의 위치(없으면 모니터 가운데 쪽 아무데나),
+   * afterLand: 착지 모션이 끝난 뒤 이어서 할 일(없으면 평소로), keepVisit: 깨우러 가는 길이라 방문을 끝내지 않는다
+   * @typedef {{ display: number, done: ((reason: 'arrived' | 'cancelled') => void)[], x?: number, afterLand?: () => void, keepVisit?: boolean }} Travel
+   */
+  /** 지금 다른 모니터로 가는 중인 이동 @type {Travel | null} */
   let traveling = null;
-  /** 지금은 출발할 수 없어서(창 위, 낙하 중) 바닥에 선 뒤로 미룬 이동 */
-  /** @type {{ display: number, done: ((reason: 'arrived' | 'cancelled') => void)[] } | null} */
+  /** 지금은 출발할 수 없어서(창 위, 낙하 중) 바닥에 선 뒤로 미룬 이동 @type {Travel | null} */
   let pendingTravel = null;
+  /** 마지막으로 스스로 건너간 시각 (시작한 직후에는 바로 건너가지 않는다) */
+  let lastHop = Date.now();
 
   /** @type {NodeJS.Timeout | null} */
   let timer = null;
@@ -198,6 +212,14 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
   function decide() {
     if (perched) return decidePerched();
     if (Date.now() - lastActive > sleepAfterMs()) return goSleep();
+    if (hopTargets && Date.now() - lastHop > hopCooldownMs && Math.random() < HOP_CHANCE) {
+      // 가끔 문을 열고 다른 모니터로 건너간다 (모니터가 하나뿐이면 갈 곳이 없다)
+      const ids = hopTargets().filter((d) => d !== pet.display && area(d));
+      if (ids.length) {
+        lastHop = Date.now();
+        return beginTravel({ display: ids[Math.floor(Math.random() * ids.length)], done: [] });
+      }
+    }
     if (target && target.display === pet.display && Date.now() - lastPerchEnd > PERCH_COOLDOWN_MS && Math.random() < PERCH_CHANCE) {
       return goToPerch();
     }
@@ -262,12 +284,12 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     clearTimer(); // 사용자가 건드릴 때까지 유지
   }
 
-  /** 착지: 눌렸다가 일어서는 동작 후 다음 행동 */
-  function land() {
+  /** 착지: 눌렸다가 일어서는 동작 후 다음 행동(next가 있으면 그것) @param {(() => void) | undefined} [next] */
+  function land(next) {
     pet.move = null;
     setAnim('drop');
     emit();
-    after(animDuration('drop'), enterIdle);
+    after(animDuration('drop'), next ?? enterIdle);
   }
 
   /** 지금 있는 곳(바닥 또는 창 위)에서 바닥으로 내려온다. */
@@ -334,6 +356,45 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     land();
   }
 
+  // --- 자는 펫 옆으로 가서 깨우기 (펫끼리 어울리기) ---
+
+  /** 자는 펫(발 x가 toward) 옆에 설 자리(발 x): 몸 하나 폭 떨어진 곳. 화면 끝이라 설 수 없으면 null. @param {number} toward */
+  function sleeperSide(toward) {
+    const a = area(pet.display);
+    if (!a) return null;
+    const gap = bodyLeft + bodyRight;
+    const side = pet.x < toward ? -1 : 1;
+    let x1 = clamp(toward + side * gap, a.left, a.right);
+    if (Math.abs(x1 - toward) < gap * 0.7) x1 = clamp(toward - side * gap, a.left, a.right); // 화면 끝이라 반대쪽으로
+    return Math.abs(x1 - toward) < gap * 0.7 ? null : x1;
+  }
+
+  /**
+   * x1까지 걸어가 자는 펫을 깨운다.
+   * @param {NonNullable<typeof visiting>} me @param {number} x1 @param {number} toward
+   * @param {() => boolean} shouldNudge @param {() => void} onNudge
+   */
+  function walkAndNudge(me, x1, toward, shouldNudge, onNudge) {
+    startWalk(x1, () => {
+      if (visiting !== me) return;
+      if (!shouldNudge()) {
+        endVisit('skipped');
+        return enterIdle();
+      }
+      pet.facing = toward < pet.x ? 'left' : 'right';
+      setAnim('nudge');
+      emit();
+      after(NUDGE_HIT_MS, () => {
+        if (visiting !== me) return;
+        onNudge();
+        after(NUDGE_REST_MS, () => {
+          endVisit('done');
+          enterIdle();
+        });
+      });
+    });
+  }
+
   // --- 다른 모니터로 이동 ---
 
   /** 이동이 끝났다(도착/취소): 기다리던 쪽에 알린다 @param {'arrived' | 'cancelled'} reason */
@@ -356,15 +417,20 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     finishTravel('cancelled');
   }
 
-  /** 문의 크기: 몸 높이를 기준으로 한다 (스킨마다 몸 크기가 다르다) */
+  /**
+   * 문의 크기(w: 너비, h: 문 바닥에서 위쪽 끝까지). 스킨에 문 그림이 있으면 그 크기이고,
+   * 없으면 코드로 그리는 문이라 몸 높이를 기준으로 한다 (스킨마다 몸 크기가 다르다).
+   */
   function doorSize() {
+    const d = skin.door;
+    if (d) return { w: d.display.w, h: d.anchor.y * d.scale };
     const h = Math.max(60, bodyUp * DOOR_BODY_RATIO);
     return { w: h * DOOR_ASPECT, h };
   }
 
-  /** 이 모니터에서 문을 열고 들어간다: 문 쪽으로 걸어가 사라지고, 문이 닫히면 저쪽으로 넘어간다. @param {NonNullable<typeof traveling>} t */
+  /** 이 모니터에서 문을 열고 들어간다: 문 쪽으로 걸어가 사라지고, 문이 닫히면 저쪽으로 넘어간다. @param {Travel} t */
   function beginTravel(t) {
-    if (visiting) endVisit('cancelled');
+    if (visiting && !t.keepVisit) endVisit('cancelled');
     traveling = t;
     lastActive = Date.now();
     settle();
@@ -405,7 +471,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     const headroom = skin.anchor.y * (skin.scale ?? 1);
     const want = a.ground - (a.ground - top) * DOOR_HEIGHT_RATIO;
     const y = Math.min(a.ground - 20, Math.max(want, top + Math.max(headroom, h) + 8));
-    const x = a.left + (a.right - a.left) * rand(0.25, 0.75);
+    const x = t.x !== undefined ? clamp(t.x, a.left, a.right) : a.left + (a.right - a.left) * rand(0.25, 0.75);
 
     pet.display = t.display;
     pet.x = x;
@@ -428,7 +494,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
         pet.move = null;
         pet.fade = null;
         finishTravel('arrived'); // 착지하면 알린다: 말풍선은 여기서 뜬다
-        land();
+        land(t.afterLand); // 착지 모션이 끝나면 이어서 할 일(깨우러 가기)이 있으면 그것을, 없으면 평소로
       });
     });
   }
@@ -495,6 +561,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
       lastActive = Date.now();
       if (visiting) {
         endVisit('cancelled');
+        cancelTravel(); // 다른 모니터로 건너가는 길이었다면 그것도 접는다
         enterIdle();
       } else if (pet.anim === 'sleep' || headingToBed()) {
         enterIdle();
@@ -523,39 +590,44 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     },
 
     /**
-     * 자고 있는 펫(발 위치 toward) 옆으로 걸어가 깨운다. 갈 수 없으면 false.
+     * 자고 있는 펫(발 위치 toward, 그 펫이 있는 모니터 display) 옆으로 걸어가 깨운다. 갈 수 없으면 false.
+     * 다른 모니터에 있는 펫이면 먼저 문으로 그 모니터에 건너가서(자는 펫 가까이에 문을 연다) 걸어간다.
      * 도착했을 때 shouldNudge()가 false면(그 사이 상대가 깼다 등) 아무것도 하지 않고 끝난다.
      * 손이 닿는 순간 onNudge()를 부르고, 끝나면 onEnd(reason)을 부른다. 도중에 사용자가 건드리면 'cancelled'.
-     * @param {{ toward: number, shouldNudge: () => boolean, onNudge: () => void, onEnd?: (reason: 'done' | 'skipped' | 'cancelled') => void }} opts
+     * @param {{ toward: number, display?: number, shouldNudge: () => boolean, onNudge: () => void, onEnd?: (reason: 'done' | 'skipped' | 'cancelled') => void }} opts
      */
-    visit({ toward, shouldNudge, onNudge, onEnd }) {
+    visit({ toward, display, shouldNudge, onNudge, onEnd }) {
       if (!canVisitNow()) return false;
-      const a = area(pet.display);
+      if (display === undefined || display === pet.display) {
+        const x1 = sleeperSide(toward);
+        if (x1 === null) return false;
+        visiting = { onEnd };
+        walkAndNudge(visiting, x1, toward, shouldNudge, onNudge);
+        return true;
+      }
+      // 다른 모니터: 문을 열고 건너가 그쪽에서 걸어간다
+      const a = area(display);
       if (!a) return false;
-      const gap = bodyLeft + bodyRight; // 몸 하나 폭 떨어져 선다
-      const side = pet.x < toward ? -1 : 1;
-      let x1 = clamp(toward + side * gap, a.left, a.right);
-      if (Math.abs(x1 - toward) < gap * 0.7) x1 = clamp(toward - side * gap, a.left, a.right); // 화면 끝이라 반대쪽으로
-      if (Math.abs(x1 - toward) < gap * 0.7) return false;
       visiting = { onEnd };
       const me = visiting;
-      startWalk(x1, () => {
-        if (visiting !== me) return;
-        if (!shouldNudge()) {
-          endVisit('skipped');
-          return enterIdle();
-        }
-        pet.facing = toward < pet.x ? 'left' : 'right';
-        setAnim('nudge');
-        emit();
-        after(NUDGE_HIT_MS, () => {
-          if (visiting !== me) return;
-          onNudge();
-          after(NUDGE_REST_MS, () => {
-            endVisit('done');
-            enterIdle();
-          });
-        });
+      beginTravel({
+        display,
+        keepVisit: true,
+        x: toward + (Math.random() < 0.5 ? -1 : 1) * VISIT_DOOR_DISTANCE,
+        done: [
+          (reason) => {
+            if (reason !== 'arrived' && visiting === me) endVisit('cancelled');
+          },
+        ],
+        afterLand: () => {
+          if (visiting !== me) return enterIdle(); // 건너오는 사이 취소됐다
+          const x1 = sleeperSide(toward);
+          if (x1 === null) {
+            endVisit('skipped');
+            return enterIdle();
+          }
+          walkAndNudge(me, x1, toward, shouldNudge, onNudge);
+        },
       });
       return true;
     },

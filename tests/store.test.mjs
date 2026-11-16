@@ -231,6 +231,17 @@ test('알림을 보고 있는 모니터에서 전하기는 기본 켜짐이고, 
   assert.equal(open(file).get().behavior.noticeFollowsFocus, false, '다시 열어도 유지');
 });
 
+test('펫이 스스로 모니터를 건너다니기는 기본 켜짐이고, 불리언만 저장된다', () => {
+  const { file } = tmpFile();
+  const s = open(file);
+  assert.equal(s.get().behavior.hopMonitors, true);
+  s.update({ behavior: { hopMonitors: false } });
+  assert.equal(s.get().behavior.hopMonitors, false);
+  s.update({ behavior: { hopMonitors: 1 } });
+  assert.equal(s.get().behavior.hopMonitors, false, '불리언이 아니면 버린다');
+  assert.equal(open(file).get().behavior.hopMonitors, false, '다시 열어도 유지');
+});
+
 test('행동/알림 설정: 범위와 형식을 검증한다', () => {
   const { file } = tmpFile();
   const s = open(file);

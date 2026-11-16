@@ -1,7 +1,7 @@
 // @ts-check
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { alphaAt, doorOpenness } from '../src/shared/motion.js';
+import { alphaAt, doorFrameAt, doorOpenness } from '../src/shared/motion.js';
 import { createPetEngine } from '../src/main/petEngine.js';
 
 const skin = {
@@ -204,4 +204,170 @@ test('투명도: fade가 없으면 보이고, 있으면 from에서 to로 바뀌�
   assert.equal(alphaAt({ fade }, 1200), 0);
   assert.equal(alphaAt({ fade }, 9999), 0);
   assert.equal(alphaAt({ fade: { t0: 0, dur: 1, from: 0, to: 0 } }, 5), 0, '숨겨 둔 채로');
+});
+
+test('문 프레임: 열리는 그림 → 활짝 → 닫히는 그림 (닫히는 그림이 따로 있을 때)', () => {
+  const door = { x: 0, y: 0, w: 30, h: 60, t0: 1000, dur: 2000 };
+  const spec = { frames: 10, openFrames: 6 };
+  assert.equal(doorFrameAt(door, 900, spec), null, '아직 안 열렸다');
+  assert.equal(doorFrameAt(door, 1000, spec), null);
+  assert.equal(doorFrameAt(door, 1010, spec), 0, '열리기 시작');
+  assert.equal(doorFrameAt(door, 1299, spec), 5, '다 열리기 직전 마지막 열림 프레임');
+  assert.equal(doorFrameAt(door, 2000, spec), 5, '열려 있는 동안은 활짝 열린 프레임');
+  assert.equal(doorFrameAt(door, 2705, spec), 6, '닫히기 시작: 닫히는 그림의 첫 장');
+  assert.equal(doorFrameAt(door, 2999, spec), 9, '닫히는 그림의 마지막 장');
+  assert.equal(doorFrameAt(door, 3000, spec), null, '닫혔다');
+});
+
+test('문 프레임: 닫히는 그림이 없으면 열리는 그림을 거꾸로 재생한다', () => {
+  const door = { x: 0, y: 0, w: 30, h: 60, t0: 0, dur: 2000 };
+  const spec = { frames: 5 };
+  assert.equal(doorFrameAt(door, 1000, spec), 4);
+  assert.equal(doorFrameAt(door, 1705, spec), 4, '닫히기 시작은 활짝 열린 장에서');
+  assert.equal(doorFrameAt(door, 1999, spec), 0, '끝에서는 닫힌 장');
+  const seen = [];
+  for (let t = 1700; t < 2000; t += 20) seen.push(/** @type {number} */ (doorFrameAt(door, t, spec)));
+  assert.deepEqual(seen, [...seen].sort((a, b) => b - a), '닫히는 동안 프레임 번호가 줄어든다');
+});
+
+test('가끔 스스로 다른 모니터로 건너간다 (쉬는 시간 2분 뒤부터, 갈 곳이 있을 때만)', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const engine = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000, hopTargets: () => [1, 2] });
+  try {
+    engine.start(1, 960);
+    for (let t = 0; t < 110_000; t += 50) mock.timers.tick(50);
+    assert.equal(engine.pet.display, 1, '2분 전에는 건너가지 않는다');
+    for (let t = 0; t < 25_000; t += 50) mock.timers.tick(50);
+    assert.equal(engine.pet.display, 2, '그 뒤 쉬는 사이 문을 열고 건너갔다');
+    assert.equal(engine.pet.y, 900, '저쪽 바닥에 착지');
+  } finally {
+    engine.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});
+
+test('갈 모니터를 주지 않거나 비어 있으면 스스로 건너가지 않는다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const a = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
+  const b = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000, hopTargets: () => [] });
+  try {
+    a.start(1, 960);
+    b.start(1, 960);
+    for (let t = 0; t < 300_000; t += 50) mock.timers.tick(50);
+    assert.equal(a.pet.display, 1);
+    assert.equal(b.pet.display, 1);
+  } finally {
+    a.dispose();
+    b.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});
+
+test('다른 모니터의 자는 펫을 깨우러: 문으로 건너가 자는 펫 가까이에서 나와 걸어가 깨운다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const mk = (/** @type {number} */ sleepAfterMs) => createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs });
+  const a = mk(10 * 60_000);
+  const b = mk(1_000);
+  try {
+    a.start(1, 500);
+    b.start(2, 2500);
+    for (let t = 0; t < 4000; t += 50) mock.timers.tick(50);
+    assert.equal(b.sleeping, true);
+    /** @type {string[]} */
+    const events = [];
+    const started = a.visit({
+      toward: b.pet.x,
+      display: 2,
+      shouldNudge: () => b.sleeping && b.pet.display === a.pet.display,
+      onNudge: () => events.push(b.wakeUp(a.pet.x) ? 'nudge' : 'nudge-miss'),
+      onEnd: (r) => events.push(`end:${r}`),
+    });
+    assert.equal(started, true);
+    assert.equal(a.canVisit, false);
+    for (let t = 0; t < 20_000 && !events.includes('end:done'); t += 50) mock.timers.tick(50);
+    assert.deepEqual(events, ['nudge', 'end:done']);
+    assert.equal(a.pet.display, 2, '건너가서 깨웠다');
+    assert.ok(Math.abs(a.pet.x - b.pet.x) < 120, '자는 펫 바로 옆에서');
+    assert.equal(b.sleeping, false, '깨어났다');
+  } finally {
+    a.dispose();
+    b.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});
+
+test('깨우러 건너가는 도중 집어 올리면 방문이 취소된다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const a = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 10 * 60_000 });
+  try {
+    a.start(1, 500);
+    /** @type {string[]} */
+    const ends = [];
+    assert.equal(a.visit({ toward: 2500, display: 2, shouldNudge: () => true, onNudge: () => {}, onEnd: (r) => ends.push(r) }), true);
+    for (let t = 0; t < 1500; t += 50) mock.timers.tick(50);
+    a.startDrag();
+    assert.deepEqual(ends, ['cancelled']);
+    for (let t = 0; t < 10_000; t += 50) mock.timers.tick(50);
+    assert.deepEqual(ends, ['cancelled'], '한 번만 끝난다');
+    assert.equal(a.pet.display, 1);
+  } finally {
+    a.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});
+
+test('깨우러 건너가는 도중 사용자가 건드리면(poke) 이동도 접고 깨어 있는다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const a = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 10 * 60_000 });
+  try {
+    a.start(1, 500);
+    /** @type {string[]} */
+    const ends = [];
+    a.visit({ toward: 2500, display: 2, shouldNudge: () => true, onNudge: () => {}, onEnd: (r) => ends.push(r) });
+    for (let t = 0; t < 1500; t += 50) mock.timers.tick(50);
+    a.poke();
+    assert.deepEqual(ends, ['cancelled']);
+    assert.equal(a.traveling, false);
+    assert.equal(a.pet.fade, null);
+    assert.equal(a.pet.door, null);
+    for (let t = 0; t < 10_000; t += 50) mock.timers.tick(50);
+    assert.equal(a.pet.display, 1, '건너가지 않는다');
+  } finally {
+    a.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});
+
+test('스킨에 문 그림이 있으면 그 크기(바닥에서 위쪽 끝까지)로 도착 문의 높이를 정한다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const withDoor = { ...skin, door: { skin: 'default', sheet: 'door.png', frames: 10, openFrames: 6, frameSize: { w: 128, h: 128 }, anchor: { x: 64, y: 124 }, scale: 2, pixelArt: false, display: { w: 256, h: 256 } } };
+  const engine = createPetEngine({ skin: withDoor, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
+  const tall = { ...withDoor, door: { ...withDoor.door, scale: 4 } };
+  const e2 = createPetEngine({ skin: tall, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
+  try {
+    engine.start(1, 960);
+    e2.start(1, 960);
+    engine.travel(2, () => {});
+    e2.travel(2, () => {});
+    for (let t = 0; t < 1850; t += 50) mock.timers.tick(50);
+    assert.equal(engine.pet.display, 2);
+    assert.equal(Math.round(engine.pet.y), 540, '작업 영역 100~900의 45% 높이');
+    assert.ok(e2.pet.y >= 100 + 496 + 8 - 1, '문 높이 496이 화면 위로 나가지 않게 아래로 민다');
+  } finally {
+    engine.dispose();
+    e2.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
 });

@@ -359,6 +359,9 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
         if (focusPetId === pet.id && pet.host.isOpen && focusDisplay !== p.display) syncChatFocus();
       },
       sleepAfterMs,
+      // 가끔 스스로 문을 열고 다른 모니터로 건너간다 (설정 → 행동에서 끌 수 있다)
+      hopTargets: () => (store.get().behavior.hopMonitors ? screen.getAllDisplays().map((d) => d.id).filter((id) => id !== pet.engine.pet.display) : []),
+      hopCooldownMs: debug && Number(process.env.AIPET_HOP_AFTER_SEC) > 0 ? Number(process.env.AIPET_HOP_AFTER_SEC) * 1000 : undefined, // 디버그: 건너가기 간격을 줄여 본다
       // 잠잘 때는 정해진 자리(설정 → 행동)까지 가서 같은 모니터의 다른 펫들과 나란히 잔다.
       sleepSpot: () => {
         const mode = store.get().behavior.sleepSpot;
@@ -404,13 +407,15 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     pets.set(conn.id, pet);
 
     // 시작 위치: 이어받은 자리가 없으면 기본 모니터의 바닥에 가로로 고르게 놓는다.
-    const startIdx = Number(process.env.AIPET_START_DISPLAY);
+    // 디버그: AIPET_START_DISPLAY="1" 또는 펫마다 "0,1"(펫 순서대로, 모자라면 마지막 값)로 시작 모니터를 정한다.
+    const order = [...pets.keys()].indexOf(conn.id);
+    const startList = (process.env.AIPET_START_DISPLAY ?? '').split(',').map(Number);
+    const startIdx = startList[Math.min(order, startList.length - 1)];
     const displays = screen.getAllDisplays();
     const startDisplay =
       displays.find((d) => d.id === hint.display) ??
       (debug && Number.isInteger(startIdx) && displays[startIdx] ? displays[startIdx] : screen.getPrimaryDisplay());
     const wa = startDisplay.workArea;
-    const order = [...pets.keys()].indexOf(conn.id);
     const total = Math.max(1, store.get().connections.filter((c) => c.enabled).length);
     const x = hint.x ?? wa.x + (wa.width * (order + 1)) / (total + 1);
     pet.engine.start(startDisplay.id, x);
@@ -886,6 +891,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
       const g = store.get().general;
       return g.petSocial && !g.doNotDisturb && visible && !suspended;
     },
+    // 다른 모니터의 자는 펫도 문을 통해 건너가 깨운다 (모니터 사이 이동을 허용했을 때)
+    crossDisplays: () => store.get().behavior.hopMonitors,
     log: (m) => log('social', m),
   });
   social.start();

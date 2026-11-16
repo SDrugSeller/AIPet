@@ -76,6 +76,20 @@
         }
       }
     },
+    "door": {
+      "description": "펫이 모니터 사이를 오갈 때 나오는 문의 열리고 닫히는 시트(가로 1줄). 펫과 별개로 화면에 겹쳐 그려진다. 생략하면 default 스킨의 문을 쓴다",
+      "type": "object",
+      "required": ["sheet", "frames", "frameSize", "anchor"],
+      "additionalProperties": false,
+      "properties": {
+        "sheet": { "$ref": "#/$defs/sheetPath" },
+        "frames": { "type": "integer", "minimum": 1, "maximum": 64, "description": "전체 프레임 수. 시트 너비 = frameSize.w × frames" },
+        "openFrames": { "type": "integer", "minimum": 1, "maximum": 64, "description": "앞쪽 열리는 그림(닫힘 → 활짝)의 장 수. 나머지는 닫히는 그림(활짝 → 닫힘). 생략하면 frames 전부이고, 닫힐 때 거꾸로 재생한다" },
+        "frameSize": { "type": "object", "required": ["w", "h"], "additionalProperties": false, "properties": { "w": { "type": "integer", "minimum": 8, "maximum": 2048 }, "h": { "type": "integer", "minimum": 8, "maximum": 2048 } } },
+        "anchor": { "$ref": "#/$defs/point", "description": "문 바닥 가운데(문이 서 있는 자리), 프레임 좌상단 기준 픽셀" },
+        "scale": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "화면 배율. 펫 크기를 바꾸면 같은 비율로 따라간다" }
+      }
+    },
     "effects": {
       "description": "상태 위에 겹치는 오버레이 스프라이트 (느낌표, zzz, 하트 등)",
       "type": "object",

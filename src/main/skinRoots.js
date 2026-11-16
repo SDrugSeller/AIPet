@@ -4,6 +4,7 @@
 //  - 사용자 스킨은 신뢰할 수 없는 입력이므로 폴더 이름과 skin.json 값을 엄격히 검사한다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { validateDoor } from '../shared/skinDoor.js';
 
 /** 사용자 스킨 폴더 이름: aipet-skin://<이름>/ 의 호스트로 쓰이므로 ASCII 영숫자, -, _ 만 허용 */
 export const USER_SKIN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -51,7 +52,7 @@ export function validateSkin(raw) {
     if (!isNum(a.fps, 0.1, 60)) return `'${name}'의 fps는 0.1~60 사이여야 해요`;
     if (a.next !== undefined && typeof a.next !== 'string') return `'${name}'의 next는 문자열이어야 해요`;
   }
-  return null;
+  return validateDoor(raw.door);
 }
 
 /**

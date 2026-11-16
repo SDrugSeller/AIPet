@@ -18,7 +18,7 @@ const area = () => ({ left: 80, right: 1840, ground: 1000 });
  * 가짜 시계/타이머와 고정 난수(0.1)로 펫 둘과 조정자를 만든다.
  * A는 오래 깨어 있고(10분), B는 1초만 가만히 있으면 잠든다.
  */
-function setup({ display = [1, 1], enabled = () => true } = {}) {
+function setup({ display = [1, 1], enabled = () => true, cross = false } = {}) {
   mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
   mock.method(Math, 'random', () => 0.1);
   const mk = (/** @type {number} */ sleepAfterMs) => {
@@ -33,6 +33,7 @@ function setup({ display = [1, 1], enabled = () => true } = {}) {
   const social = createSocial({
     getPets: () => [{ id: 'A', engine: a }, { id: 'B', engine: b }],
     enabled,
+    crossDisplays: () => cross,
     log: (m) => logs.push(m),
     now: () => Date.now(),
     rand: () => 0.1,
@@ -235,4 +236,55 @@ test('자고 있지 않은 펫은 wakeUp이 false이고 아무것도 바꾸지 �
   } finally {
     cleanup();
   }
+});
+
+test('모니터 사이 이동이 허용되면 다른 모니터에서 자는 펫도 문으로 건너가 깨운다', () => {
+  const t = setup({ display: [1, 2], cross: true });
+  try {
+    t.untilSleptEnough();
+    assert.equal(t.social.tick(), true, '다른 모니터여도 깨우러 간다');
+    assert.match(t.logs.at(-1), /문을 통해 다른 모니터로 건너감/);
+    t.until(() => t.b.pet.anim === 'wake', 30_000);
+    assert.equal(t.a.pet.display, 2, '건너가서 깨웠다');
+    assert.equal(t.logs.some((m) => m.includes('깨움')), true);
+    t.until(() => !t.social.busy);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('허용하지 않으면(기본) 다른 모니터의 자는 펫은 깨우러 가지 않는다', () => {
+  const t = setup({ display: [1, 2], cross: false });
+  try {
+    t.untilSleptEnough();
+    assert.equal(t.social.tick(), false);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('같은 모니터에 갈 곳이 있으면 문을 통해 건너가지 않는다', () => {
+  /** @param {string} id @param {number} display @param {boolean} asleep */
+  const stub = (id, display, asleep) => {
+    /** @type {any[]} */
+    const visits = [];
+    return {
+      id,
+      visits,
+      engine: /** @type {any} */ ({
+        pet: { display, x: 100 },
+        sleeping: asleep,
+        sleptFor: () => 60_000,
+        canVisit: !asleep,
+        visit: (/** @type {any} */ o) => (visits.push(o), true),
+      }),
+    };
+  };
+  const a = stub('A', 1, false);
+  const sameMonitor = stub('C', 1, true);
+  const otherMonitor = stub('B', 2, true);
+  const social = createSocial({ getPets: () => [a, otherMonitor, sameMonitor], enabled: () => true, crossDisplays: () => true, rand: () => 0.1 });
+  assert.equal(social.tick(), true);
+  assert.equal(a.visits.length, 1);
+  assert.equal(a.visits[0].display, 1, '같은 모니터의 C로 간다');
 });

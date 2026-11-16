@@ -3,10 +3,13 @@ import { net, protocol } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveDoor } from '../shared/skinDoor.js';
 import { applyTuning } from '../shared/skinTuning.js';
 import { createSkinRoots, isInside, validateSkin } from './skinRoots.js';
 
 export const SKIN_SCHEME = 'aipet-skin';
+/** 문을 빌려 주는 기본 스킨 */
+const DEFAULT_SKIN = 'default';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const bundledRoot = path.resolve(here, '../../skins');
@@ -61,6 +64,17 @@ export async function loadSkin(name, tuning) {
   // 크기(scale)/앵커/히트박스는 사용자가 입력한 프레임 크기와 표시 높이에 맞춰 자동 환산한다.
   const t = applyTuning({ frameSize: raw.frameSize, scale: raw.scale ?? 1, anchor: raw.anchor, hitbox: raw.hitbox }, tuning);
 
+  // 문(모니터 사이를 오갈 때): 이 스킨 폴더의 door 시트. 없으면 기본 스킨의 문을 빌려 쓰고, 그것도 없으면 렌더러가 코드로 그린다.
+  // 문 크기는 이 펫이 화면에서 차지하는 높이에 맞춘다 (문 그림이 만들어진 펫 높이 대비 비율).
+  let door = null;
+  if (raw.door) {
+    const sheet = path.resolve(dir, String(raw.door.sheet));
+    if (!isInside(dir, sheet)) throw new Error('skin.json: door 시트 경로가 스킨 폴더를 벗어납니다');
+    door = resolveDoor({ door: raw.door, owner: name, factor: t.displaySize.h / (raw.frameSize.h * (raw.scale ?? 1)), pixelArt: raw.pixelArt ?? false });
+  } else if (name !== DEFAULT_SKIN) {
+    door = await borrowedDoor(t.displaySize.h);
+  }
+
   return {
     name,
     source: found.source,
@@ -73,7 +87,21 @@ export async function loadSkin(name, tuning) {
     anchor: t.anchor,
     hitbox: t.hitbox,
     animations: raw.animations,
+    door,
   };
+}
+
+/** 문이 없는 스킨이 빌려 쓰는 기본 스킨의 문 @param {number} petDisplayH 이 펫이 화면에서 차지하는 높이(px) */
+async function borrowedDoor(petDisplayH) {
+  try {
+    const def = roots.resolve(DEFAULT_SKIN);
+    if (!def || def.source !== 'bundled') return null; // 앱에 들어 있는 기본 스킨만 믿는다
+    const raw = JSON.parse(await fs.readFile(path.join(def.dir, 'skin.json'), 'utf8'));
+    if (!raw.door) return null;
+    return resolveDoor({ door: raw.door, owner: DEFAULT_SKIN, factor: petDisplayH / (raw.frameSize.h * (raw.scale ?? 1)), pixelArt: raw.pixelArt ?? false });
+  } catch {
+    return null; // 문 그림이 없어도 펫은 동작한다 (코드로 그린 문을 쓴다)
+  }
 }
 
 /** PNG 헤더에서 크기를 읽는다. @param {string} file @returns {Promise<{ width: number, height: number } | null>} */

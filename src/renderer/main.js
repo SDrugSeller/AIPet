@@ -2,7 +2,7 @@
 // 이 창은 한 모니터를 담당한다. 펫 좌표는 가상 데스크톱 기준(전역)이고,
 // 그릴 때 이 창의 원점(bounds.x/y)을 빼서 로컬 좌표로 바꾼다.
 // 펫은 연결 하나당 한 마리이고, 각 펫은 자기 모니터의 창에서만(isHome) 그려진다.
-import { alphaAt, doorOpenness, positionAt } from '../shared/motion.js';
+import { alphaAt, doorFrameAt, doorOpenness, positionAt } from '../shared/motion.js';
 import { createChat, refocusActiveChat } from './chat.js';
 
 /** @type {any} */
@@ -21,6 +21,7 @@ let origin = { x: initialBounds.x, y: initialBounds.y };
  * @typedef {{
  *   id: string, name: string, skin: any, skinKey: string,
  *   sheets: Map<string, HTMLImageElement | null> | null,
+ *   doorSheet: HTMLImageElement | null,
  *   state: any,
  *   chat: ReturnType<typeof createChat>,
  * }} Pet
@@ -68,6 +69,26 @@ function loadSheets(skin) {
       return sheets;
     })();
     sheetCache.set(skin.name, p);
+  }
+  return p;
+}
+
+/** 문 시트(스킨 폴더의 door). 같은 시트는 한 번만 읽는다. 없거나 못 읽으면 null → 코드로 그린 문 @type {Map<string, Promise<HTMLImageElement | null>>} */
+const doorCache = new Map();
+
+/** @param {{ skin: string, sheet: string } | null | undefined} door */
+function loadDoorSheet(door) {
+  if (!door) return Promise.resolve(null);
+  const url = `aipet-skin://${door.skin}/${door.sheet}`;
+  let p = doorCache.get(url);
+  if (!p) {
+    p = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    doorCache.set(url, p);
   }
   return p;
 }
@@ -189,11 +210,31 @@ function drawDoor(d, open) {
   return { x: d.x - origin.x - (w / 2 + 5) - pad, y: d.y - origin.y - h - 5 - pad, w: w + 10 + pad * 2, h: h + 5 + pad * 2 };
 }
 
+/**
+ * 스킨의 문 시트에서 한 프레임을 그린다 (펫 그림과 별개로 이 자리에 겹쳐 그린다).
+ * @param {Pet} p @param {{ x: number, y: number }} door 문이 서 있는 자리(바닥 가운데, 전역 좌표) @param {number} frame
+ * @returns {{ x: number, y: number, w: number, h: number }} 지울 영역
+ */
+function drawDoorSprite(p, door, frame) {
+  const spec = p.skin.door;
+  const { w: fw, h: fh } = spec.frameSize;
+  const w = fw * spec.scale;
+  const h = fh * spec.scale;
+  const x = door.x - origin.x - spec.anchor.x * spec.scale;
+  const y = door.y - origin.y - spec.anchor.y * spec.scale;
+  ctx.save();
+  ctx.imageSmoothingEnabled = !spec.pixelArt;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(/** @type {HTMLImageElement} */ (p.doorSheet), frame * fw, 0, fw, fh, x, y, w, h);
+  ctx.restore();
+  return { x, y, w, h };
+}
+
 /** @param {number} now */
 function render(now) {
   /** @type {{ p: Pet, pos: { x: number, y: number }, anim: string | null, frame: number, flip: boolean, alpha: number }[]} */
   const items = [];
-  /** @type {{ door: any, open: number }[]} */
+  /** @type {{ p: Pet, door: any, open: number, frame: number | null }[]} */
   const doors = [];
   for (const id of drawOrder) {
     const p = pets.get(id);
@@ -203,7 +244,9 @@ function render(now) {
     const alpha = alphaAt(p.state, now);
     if (p.state.door) {
       const open = doorOpenness(p.state.door, now);
-      if (open > 0) doors.push({ door: p.state.door, open });
+      // 스킨의 문 시트가 있으면 시트의 프레임을, 없으면 코드로 그린 문을 쓴다
+      const frame = p.doorSheet && p.skin.door ? doorFrameAt(p.state.door, now, p.skin.door) : null;
+      if (frame !== null || open > 0) doors.push({ p, door: p.state.door, open, frame });
     }
     if (alpha <= 0.01) continue; // 문 안에 있는 동안은 그리지 않는다
     items.push({ p, pos, anim, frame: anim ? frameOf(p, anim, now - p.state.t0) : 0, flip: isFlipped(p), alpha });
@@ -213,7 +256,7 @@ function render(now) {
   // 이 창에 그릴 펫이 없을 때(키가 빈 문자열)에 지우기를 건너뛰어 이전 모습이 잔상으로 남는다.
   const key = 'k:' + items
     .map((i) => [i.p.id, i.anim, i.frame, i.flip, i.pos.x.toFixed(1), i.pos.y.toFixed(1), i.alpha.toFixed(2), !!i.p.sheets].join(','))
-    .join('|') + doors.map((d) => `|d${d.door.x.toFixed(0)},${d.open.toFixed(2)}`).join('') + (debug ? `|${interactive}` : '');
+    .join('|') + doors.map((d) => `|d${d.door.x.toFixed(0)},${d.frame ?? d.open.toFixed(2)}`).join('') + (debug ? `|${interactive}` : '');
   if (key === lastKey) return;
   lastKey = key;
 
@@ -222,7 +265,7 @@ function render(now) {
   lastRects = [];
 
   // 문은 펫 뒤에 그린다 (펫이 문 앞으로 걸어가 안으로 사라지고, 문 앞에 나타난다)
-  for (const { door, open } of doors) lastRects.push(drawDoor(door, open));
+  for (const { p, door, open, frame } of doors) lastRects.push(frame !== null ? drawDoorSprite(p, door, frame) : drawDoor(door, open));
 
   for (const { p, pos, anim, frame, flip, alpha } of items) {
     const { sprite: r, hit } = petRects(p, pos);
@@ -383,7 +426,7 @@ function upsertPet(d) {
   const skinKey = JSON.stringify(d.skin);
   let p = pets.get(d.id);
   if (!p) {
-    p = { id: d.id, name: d.name, skin: d.skin, skinKey, sheets: null, state: d.state, chat: createChat(api, d, layer, template) };
+    p = { id: d.id, name: d.name, skin: d.skin, skinKey, sheets: null, doorSheet: null, state: d.state, chat: createChat(api, d, layer, template) };
     pets.set(d.id, p);
     drawOrder.push(d.id);
     if (d.notice) p.chat.showNotice(d.notice); // 창이 열리기 전에 뜬 알림(설정 안내 등)도 보여 준다
@@ -395,9 +438,18 @@ function upsertPet(d) {
       p.skin = d.skin;
       p.skinKey = skinKey;
       p.sheets = null;
+      p.doorSheet = null;
     }
   }
   const target = p;
+  if (!target.doorSheet && d.skin.door) {
+    void loadDoorSheet(d.skin.door).then((img) => {
+      if (target.skinKey === skinKey) {
+        target.doorSheet = img;
+        lastKey = '';
+      }
+    });
+  }
   if (!target.sheets) {
     void loadSheets(d.skin).then((s) => {
       if (target.skinKey === skinKey) {

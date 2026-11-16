@@ -60,6 +60,27 @@ export function doorOpenness(door, now) {
   return Math.min(1, e / DOOR_OPEN_MS) * Math.min(1, (door.dur - e) / DOOR_CLOSE_MS);
 }
 
+/**
+ * 문 스프라이트의 지금 프레임 번호. 아직 안 열렸거나 이미 닫혔으면 null.
+ * 시트는 `openFrames`장의 "열리는" 그림(닫힘 → 활짝)과, 있으면 그 뒤 나머지 "닫히는" 그림으로 이루어진다.
+ * 닫히는 그림이 없으면(openFrames가 frames와 같으면) 열리는 그림을 거꾸로 재생한다. 열려 있는 동안은 활짝 열린 마지막 열림 프레임.
+ * 프레임이 나오는 시간은 프레임 수와 상관없이 DOOR_OPEN_MS, DOOR_CLOSE_MS에 맞춰 늘어난다.
+ * @param {Door} door @param {number} now @param {{ frames: number, openFrames?: number }} spec
+ * @returns {number | null}
+ */
+export function doorFrameAt(door, now, spec) {
+  const e = now - door.t0;
+  if (e <= 0 || e >= door.dur) return null;
+  const open = Math.max(1, Math.min(spec.openFrames ?? spec.frames, spec.frames));
+  if (e < DOOR_OPEN_MS) return Math.min(open - 1, Math.floor((e / DOOR_OPEN_MS) * open));
+  const closing = e - (door.dur - DOOR_CLOSE_MS);
+  if (closing < 0) return open - 1;
+  const k = closing / DOOR_CLOSE_MS;
+  const closeN = spec.frames - open;
+  if (closeN > 0) return open + Math.min(closeN - 1, Math.floor(k * closeN));
+  return open - 1 - Math.min(open - 1, Math.floor(k * open));
+}
+
 /** 펫의 투명도 0~1. fade가 없으면 1(보임) @param {{ fade?: Fade | null }} pet @param {number} now */
 export function alphaAt(pet, now) {
   const f = pet.fade;

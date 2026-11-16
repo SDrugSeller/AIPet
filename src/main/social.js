@@ -1,5 +1,6 @@
 // @ts-check
-// 펫끼리 어울리기: 깨어서 한가한 펫이 같은 모니터에서 자고 있는 펫을 깨우러 간다.
+// 펫끼리 어울리기: 깨어서 한가한 펫이 자고 있는 펫을 깨우러 간다. 같은 모니터의 펫이 먼저이고,
+// 모니터를 넘는 것이 허용되어 있으면(crossDisplays) 다른 모니터의 자는 펫도 문을 통해 건너가 깨운다.
 // 엔진 두 개를 함께 움직여야 해서 개별 엔진이 아니라 여기서 조정한다. 시계와 난수는 주입받아 테스트할 수 있다.
 
 /** 후보를 살피는 간격 */
@@ -22,12 +23,13 @@ const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
  * @param {{
  *   getPets: () => { id: string, engine: PetEngine }[],
  *   enabled: () => boolean,
+ *   crossDisplays?: () => boolean,
  *   log?: (message: string) => void,
  *   now?: () => number,
  *   rand?: () => number,
  * }} deps
  */
-export function createSocial({ getPets, enabled, log = () => {}, now = Date.now, rand = Math.random }) {
+export function createSocial({ getPets, enabled, crossDisplays = () => false, log = () => {}, now = Date.now, rand = Math.random }) {
   /** @type {Map<string, number[]>} 두 펫의 id(정렬해서 "a|b") → 최근 방문을 시작한 시각들 */
   const visits = new Map();
 
@@ -53,20 +55,27 @@ export function createSocial({ getPets, enabled, log = () => {}, now = Date.now,
     if (!sleepers.length) return false;
     const visitors = pets.filter((p) => p.engine.canVisit);
 
+    const cross = crossDisplays();
     const pairs = [];
     for (const v of visitors) {
       for (const s of sleepers) {
-        if (v.id === s.id || v.engine.pet.display !== s.engine.pet.display) continue;
+        if (v.id === s.id) continue;
+        if (v.engine.pet.display !== s.engine.pet.display && !cross) continue;
         if (recentVisits(pairKey(v.id, s.id)).length >= PAIR_MAX_VISITS) continue;
         pairs.push({ v, s });
       }
     }
     if (!pairs.length || rand() >= VISIT_CHANCE) return false;
 
-    const { v, s } = pairs[Math.min(pairs.length - 1, Math.floor(rand() * pairs.length))];
+    // 같은 모니터의 쌍이 있으면 그쪽을 먼저 (문을 통해 건너가는 것은 같은 모니터에 갈 곳이 없을 때)
+    const near = pairs.filter(({ v, s }) => v.engine.pet.display === s.engine.pet.display);
+    const pool = near.length ? near : pairs;
+    const { v, s } = pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+    const across = v.engine.pet.display !== s.engine.pet.display;
     const started = v.engine.visit({
       toward: s.engine.pet.x,
-      // 도착했을 때 상대가 그대로 자고 있고 같은 모니터에 있어야 깨운다
+      display: s.engine.pet.display,
+      // 도착했을 때(건너온 뒤 포함) 상대가 그대로 자고 있고 같은 모니터에 있어야 깨운다
       shouldNudge: () => s.engine.sleeping && s.engine.pet.display === v.engine.pet.display,
       onNudge: () => {
         const woke = s.engine.wakeUp(v.engine.pet.x);
@@ -80,7 +89,7 @@ export function createSocial({ getPets, enabled, log = () => {}, now = Date.now,
     if (!started) return false;
     recentVisits(pairKey(v.id, s.id)).push(now());
     active = { since: now() };
-    log(`${v.id}이(가) 자고 있는 ${s.id}을(를) 깨우러 감`);
+    log(`${v.id}이(가) 자고 있는 ${s.id}을(를) 깨우러 ${across ? '문을 통해 다른 모니터로 건너감' : '감'}`);
     return true;
   }
 

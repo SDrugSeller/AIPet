@@ -43,6 +43,7 @@
     { "anim": "yawn",        "weight": 3, "cooldownSec": 120 },
     { "anim": "look_around", "weight": 4, "cooldownSec": 60 }
   ],
+  "door": { "sheet": "door.png", "frames": 10, "openFrames": 6, "frameSize": { "w": 128, "h": 128 }, "anchor": { "x": 64, "y": 124 }, "scale": 1 },
   "effects": {
     "exclaim": { "sheet": "fx_exclaim.png", "frames": 4, "fps": 8, "loop": true, "offset": { "x": 0, "y": -110 } }
   }

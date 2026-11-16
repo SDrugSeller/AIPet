@@ -56,6 +56,8 @@ export const DEFAULTS = {
     sleepSpot: SLEEP_SPOT_DEFAULT,
     /** 알림(쉬라는 말, 정해진 시각, 작업 완료)을 전할 때 펫이 다른 모니터에 있으면, 사용자가 보고 있는 모니터로 문을 통해 건너와서 전한다 */
     noticeFollowsFocus: true,
+    /** 펫이 문을 열고 스스로 다른 모니터로 건너다닌다 (가끔 건너가기, 다른 모니터의 자는 펫 깨우러 가기) */
+    hopMonitors: true,
   },
   spontaneous: {
     /** 먼저 말 걸기 전체 스위치. 끄면 아래 항목이 모두 동작하지 않는다. (AI를 호출하지 않으므로 토큰은 쓰지 않는다) */
@@ -133,7 +135,7 @@ const SPEC = {
   connections: validateConnections,
   skinTuning,
   permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, autoAllowEdit: isBool, autoAllowShell: isBool, autoAllowFetch: isBool, codexWrite: isBool, workDir: str(1000) },
-  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool, sleepSpot: oneOf(SLEEP_SPOT_MODES), noticeFollowsFocus: isBool },
+  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool, sleepSpot: oneOf(SLEEP_SPOT_MODES), noticeFollowsFocus: isBool, hopMonitors: isBool },
   spontaneous: {
     enabled: isBool,
     notifyDone: isBool,
