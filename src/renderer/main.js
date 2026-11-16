@@ -212,10 +212,11 @@ function drawDoor(d, open) {
 
 /**
  * 스킨의 문 시트에서 한 프레임을 그린다 (펫 그림과 별개로 이 자리에 겹쳐 그린다).
- * @param {Pet} p @param {{ x: number, y: number }} door 문이 서 있는 자리(바닥 가운데, 전역 좌표) @param {number} frame
+ * 프레임이 한 장뿐인 시트(토관처럼 열고 닫는 그림이 없는 문)는 갑자기 나타나고 사라지지 않게 서서히 보였다 사라진다.
+ * @param {Pet} p @param {{ x: number, y: number }} door 문이 서 있는 자리(바닥 가운데, 전역 좌표) @param {number} frame @param {number} open 열린 정도 0~1
  * @returns {{ x: number, y: number, w: number, h: number }} 지울 영역
  */
-function drawDoorSprite(p, door, frame) {
+function drawDoorSprite(p, door, frame, open) {
   const spec = p.skin.door;
   const { w: fw, h: fh } = spec.frameSize;
   const w = fw * spec.scale;
@@ -223,6 +224,7 @@ function drawDoorSprite(p, door, frame) {
   const x = door.x - origin.x - spec.anchor.x * spec.scale;
   const y = door.y - origin.y - spec.anchor.y * spec.scale;
   ctx.save();
+  if (spec.frames === 1) ctx.globalAlpha = Math.min(1, open * 1.6);
   ctx.imageSmoothingEnabled = !spec.pixelArt;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(/** @type {HTMLImageElement} */ (p.doorSheet), frame * fw, 0, fw, fh, x, y, w, h);
@@ -265,7 +267,7 @@ function render(now) {
   lastRects = [];
 
   // 문은 펫 뒤에 그린다 (펫이 문 앞으로 걸어가 안으로 사라지고, 문 앞에 나타난다)
-  for (const { p, door, open, frame } of doors) lastRects.push(frame !== null ? drawDoorSprite(p, door, frame) : drawDoor(door, open));
+  for (const { p, door, open, frame } of doors) lastRects.push(frame !== null ? drawDoorSprite(p, door, frame, open) : drawDoor(door, open));
 
   for (const { p, pos, anim, frame, flip, alpha } of items) {
     const { sprite: r, hit } = petRects(p, pos);

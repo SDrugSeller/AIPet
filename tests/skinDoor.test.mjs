@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import { validateSkin } from '../src/main/skinRoots.js';
+import { doorFrameAt } from '../src/shared/motion.js';
 import { resolveDoor, validateDoor } from '../src/shared/skinDoor.js';
 
 const goodDoor = () => ({ sheet: 'door.png', frames: 10, openFrames: 6, frameSize: { w: 128, h: 128 }, anchor: { x: 64, y: 124 }, scale: 1 });
@@ -70,4 +71,15 @@ test('resolveDoor: 펫 크기에 맞춘 배율과 화면 크기, 문 그림을 �
   delete (/** @type {any} */ (whole).openFrames);
   assert.equal(resolveDoor({ door: whole, owner: 'mine', factor: 1, pixelArt: true }).openFrames, 10, 'openFrames를 생략하면 전부 열리는 그림');
   assert.equal(resolveDoor({ door: { ...goodDoor(), scale: 2 }, owner: 'mine', factor: 0.5, pixelArt: true }).scale, 1, '스킨의 scale에 펫 크기 배율이 곱해진다');
+});
+
+test('프레임이 한 장뿐인 문(토관 같은 그림)도 열려 있는 동안 계속 그 한 장이다', () => {
+  const door = { x: 0, y: 0, w: 30, h: 60, t0: 1000, dur: 2000 };
+  const one = { ...goodDoor(), frames: 1 };
+  delete (/** @type {any} */ (one).openFrames);
+  assert.equal(validateDoor(one), null);
+  const spec = { frames: 1 };
+  assert.equal(doorFrameAt(door, 900, spec), null);
+  for (const t of [1010, 1200, 2000, 2800, 2999]) assert.equal(doorFrameAt(door, t, spec), 0, `t=${t}`);
+  assert.equal(doorFrameAt(door, 3000, spec), null);
 });
