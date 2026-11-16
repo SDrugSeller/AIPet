@@ -444,7 +444,9 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     if (Math.abs(x - pet.x) < 24) x = clamp(pet.x - dir * reach, a.left, a.right);
     const speed = skin.animations.walk?.moveSpeed ?? 60;
     const walkMs = (Math.abs(x - pet.x) / speed) * 1000;
-    pet.door = { x, y: pet.y, w, h, t0: Date.now(), dur: DOOR_OPEN_MS + walkMs + DOOR_FADE_MS + DOOR_CLOSE_MS };
+    // 문(토관)의 입구는 다가오는 펫 쪽을 본다: 오른쪽으로 걸어가면 입구는 문의 왼쪽에, 왼쪽으로 걸어가면 오른쪽에 있다.
+    const mouth = x > pet.x ? 'left' : 'right';
+    pet.door = { x, y: pet.y, w, h, mouth, t0: Date.now(), dur: DOOR_OPEN_MS + walkMs + DOOR_FADE_MS + DOOR_CLOSE_MS };
     startWalk(x, () => {
       // 문 앞에 도착: 문 안으로 사라진다
       pet.fade = { t0: Date.now(), dur: DOOR_FADE_MS, from: 1, to: 0 };
@@ -478,8 +480,9 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     pet.y = y;
     pet.move = null;
     pet.fade = { t0: Date.now(), dur: 1, from: 0, to: 0 }; // 문이 열릴 때까지는 보이지 않는다
-    pet.door = { x, y, w, h, t0: Date.now(), dur: DOOR_OPEN_MS + DOOR_EMERGE_MS + DOOR_CLOSE_MS };
     pet.facing = skin.facing ?? 'left';
+    // 나오는 펫이 바라보는 쪽으로 입구가 열려 있다 (입구에서 나와 그쪽을 보며 떨어진다)
+    pet.door = { x, y, w, h, mouth: pet.facing, t0: Date.now(), dur: DOOR_OPEN_MS + DOOR_EMERGE_MS + DOOR_CLOSE_MS };
     setAnim('idle');
     emit();
     after(DOOR_OPEN_MS, () => {

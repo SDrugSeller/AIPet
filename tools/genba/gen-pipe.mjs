@@ -25,9 +25,9 @@ const SS = 3; // 한 픽셀을 SS×SS로 나누어 그린 뒤 평균을 낸다 (
 const R = 92; // 원통 반지름(세로)
 const CY = 244 - R; // 원통 가운데 높이
 const RX = 40; // 끝면 타원의 가로 반지름 (옆에서 비스듬히 본 모습)
-const X0 = 58; // 가까운 쪽(왼쪽) 끝면 중심
-const X1 = 202; // 먼 쪽(오른쪽) 끝면 중심
-const SEAM_X = 128; // 몸통의 이음매 위치
+const X0 = 56; // 가까운 쪽(왼쪽) 끝면 중심 (그림이 좌우 가운데 x=128에 오도록 정했다. 좌우로 뒤집어도 자리가 같다)
+const X1 = 200; // 먼 쪽(오른쪽) 끝면 중심
+const SEAM_X = 126; // 몸통의 이음매 위치
 
 const INK = [28, 28, 32];
 const CONCRETE = [198, 198, 198];
@@ -185,7 +185,7 @@ if (target) {
     const skin = JSON.parse(readFileSync(file, 'utf8'));
     // 문이 펫 키와 같은 높이로 보이게: 펫이 화면에서 차지하는 높이 ÷ 그림 높이
     const scale = Math.round(((skin.frameSize.h * (skin.scale ?? 1)) / H) * 10000) / 10000;
-    skin.door = { sheet: 'door.png', frames: 1, frameSize: { w: W, h: H }, anchor: { x: (X0 - RX + X1 + RX) / 2, y: 244 }, scale };
+    skin.door = { sheet: 'door.png', frames: 1, frameSize: { w: W, h: H }, anchor: { x: (X0 - RX + X1 + RX) / 2, y: 244 }, scale, opening: 'left' };
     writeFileSync(path.join(dir, 'door.png'), png);
     writeFileSync(file, `${JSON.stringify(skin, null, 2)}\n`);
     console.log(`${dir}  (문 배율 ${scale})`);

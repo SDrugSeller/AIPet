@@ -47,8 +47,9 @@ export const DOOR_OPEN_MS = 300;
 export const DOOR_CLOSE_MS = 300;
 
 /**
- * @typedef {{ x: number, y: number, w: number, h: number, t0: number, dur: number }} Door
- *   x, y: 문 바닥 가운데(가상 데스크톱 DIP), w/h: 문 크기, t0: 문이 열리기 시작한 시각, dur: 닫히기까지 포함한 전체 시간
+ * @typedef {{ x: number, y: number, w: number, h: number, mouth?: 'left' | 'right', t0: number, dur: number }} Door
+ *   x, y: 문 바닥 가운데(가상 데스크톱 DIP), w/h: 문 크기, mouth: 입구가 향한 쪽(토관처럼 방향이 있는 문을 그림에 맞춰 뒤집는 데 쓴다),
+ *   t0: 문이 열리기 시작한 시각, dur: 닫히기까지 포함한 전체 시간
  * @typedef {{ t0: number, dur: number, from: number, to: number }} Fade
  *   펫의 투명도가 dur(ms) 동안 from에서 to로 바뀐다 (0=안 보임, 1=보임). 끝난 뒤에는 to로 머문다.
  */

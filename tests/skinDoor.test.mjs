@@ -41,6 +41,7 @@ const BAD = [
   ['frameSize 없음', (d) => delete d.frameSize],
   ['anchor 숫자 아님', (d) => (d.anchor.x = '64')],
   ['scale 0', (d) => (d.scale = 0)],
+  ['opening이 left/right가 아님', (d) => (d.opening = 'up')],
 ];
 for (const [label, mutate] of BAD) {
   test(`validateDoor: 거부 - ${label}`, () => {
@@ -82,4 +83,11 @@ test('프레임이 한 장뿐인 문(토관 같은 그림)도 열려 있는 동�
   assert.equal(doorFrameAt(door, 900, spec), null);
   for (const t of [1010, 1200, 2000, 2800, 2999]) assert.equal(doorFrameAt(door, t, spec), 0, `t=${t}`);
   assert.equal(doorFrameAt(door, 3000, spec), null);
+});
+
+test('door.opening: left/right는 통과하고 환산 결과에 그대로 담기며, 생략하면 null(뒤집지 않음)', () => {
+  assert.equal(validateDoor({ ...goodDoor(), opening: 'left' }), null);
+  assert.equal(validateDoor({ ...goodDoor(), opening: 'right' }), null);
+  assert.equal(resolveDoor({ door: { ...goodDoor(), opening: 'left' }, owner: 'a', factor: 1, pixelArt: false }).opening, 'left');
+  assert.equal(resolveDoor({ door: goodDoor(), owner: 'a', factor: 1, pixelArt: false }).opening, null);
 });

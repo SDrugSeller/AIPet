@@ -371,3 +371,29 @@ test('스킨에 문 그림이 있으면 그 크기(바닥에서 위쪽 끝까지
     mock.restoreAll();
   }
 });
+
+test('문의 입구는 다가오는 펫 쪽을 본다: 오른쪽으로 걸어가면 왼쪽, 왼쪽으로 걸어가면 오른쪽, 나올 때는 펫이 바라보는 쪽', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  mock.method(Math, 'random', () => 0.1);
+  const mk = () => createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
+  const west = mk(); // 모니터 가운데(960)보다 왼쪽: 문은 오른쪽에 열려서 오른쪽으로 걸어간다
+  const east = mk(); // 가운데보다 오른쪽: 왼쪽으로 걸어간다
+  try {
+    west.start(1, 400);
+    east.start(1, 1500);
+    west.travel(2, () => {});
+    east.travel(2, () => {});
+    assert.ok(/** @type {NonNullable<typeof west.pet.door>} */ (west.pet.door).x > west.pet.x);
+    assert.equal(west.pet.door?.mouth, 'left', '오른쪽으로 다가가므로 입구는 문의 왼쪽');
+    assert.ok(/** @type {NonNullable<typeof east.pet.door>} */ (east.pet.door).x < east.pet.x);
+    assert.equal(east.pet.door?.mouth, 'right', '왼쪽으로 다가가므로 입구는 문의 오른쪽');
+    for (let t = 0; t < 1900; t += 50) mock.timers.tick(50);
+    assert.equal(west.pet.display, 2);
+    assert.equal(west.pet.door?.mouth, west.pet.facing, '나오는 문의 입구는 펫이 바라보는 쪽');
+  } finally {
+    west.dispose();
+    east.dispose();
+    mock.timers.reset();
+    mock.restoreAll();
+  }
+});

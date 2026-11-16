@@ -221,13 +221,21 @@ function drawDoorSprite(p, door, frame, open) {
   const { w: fw, h: fh } = spec.frameSize;
   const w = fw * spec.scale;
   const h = fh * spec.scale;
-  const x = door.x - origin.x - spec.anchor.x * spec.scale;
+  // 방향이 있는 문(토관)은 입구가 다가오는 펫 쪽을 보도록 필요할 때 좌우로 뒤집는다. 뒤집으면 기준점도 좌우가 바뀐다.
+  const flip = !!spec.opening && !!door.mouth && spec.opening !== door.mouth;
+  const x = door.x - origin.x - (flip ? fw - spec.anchor.x : spec.anchor.x) * spec.scale;
   const y = door.y - origin.y - spec.anchor.y * spec.scale;
   ctx.save();
   if (spec.frames === 1) ctx.globalAlpha = Math.min(1, open * 1.6);
   ctx.imageSmoothingEnabled = !spec.pixelArt;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(/** @type {HTMLImageElement} */ (p.doorSheet), frame * fw, 0, fw, fh, x, y, w, h);
+  if (flip) {
+    ctx.translate(x + w, y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(/** @type {HTMLImageElement} */ (p.doorSheet), frame * fw, 0, fw, fh, 0, 0, w, h);
+  } else {
+    ctx.drawImage(/** @type {HTMLImageElement} */ (p.doorSheet), frame * fw, 0, fw, fh, x, y, w, h);
+  }
   ctx.restore();
   return { x, y, w, h };
 }
