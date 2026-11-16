@@ -40,6 +40,34 @@ export function positionAt(pet, now) {
   return { x: pet.x, y: Math.min(m.y1, pet.y + 0.5 * m.g * t * t) };
 }
 
+// --- 모니터 사이 이동: 문으로 들어가서 다른 모니터의 문에서 나온다 (엔진과 렌더러가 같은 시간표를 쓴다) ---
+
+/** 문이 열리는 시간, 닫히는 시간(ms) */
+export const DOOR_OPEN_MS = 300;
+export const DOOR_CLOSE_MS = 300;
+
+/**
+ * @typedef {{ x: number, y: number, w: number, h: number, t0: number, dur: number }} Door
+ *   x, y: 문 바닥 가운데(가상 데스크톱 DIP), w/h: 문 크기, t0: 문이 열리기 시작한 시각, dur: 닫히기까지 포함한 전체 시간
+ * @typedef {{ t0: number, dur: number, from: number, to: number }} Fade
+ *   펫의 투명도가 dur(ms) 동안 from에서 to로 바뀐다 (0=안 보임, 1=보임). 끝난 뒤에는 to로 머문다.
+ */
+
+/** 문이 열린 정도 0~1 (열리는 중 → 1 → 닫히는 중 → 0). 아직 안 열렸거나 이미 닫혔으면 0 @param {Door} door @param {number} now */
+export function doorOpenness(door, now) {
+  const e = now - door.t0;
+  if (e <= 0 || e >= door.dur) return 0;
+  return Math.min(1, e / DOOR_OPEN_MS) * Math.min(1, (door.dur - e) / DOOR_CLOSE_MS);
+}
+
+/** 펫의 투명도 0~1. fade가 없으면 1(보임) @param {{ fade?: Fade | null }} pet @param {number} now */
+export function alphaAt(pet, now) {
+  const f = pet.fade;
+  if (!f) return 1;
+  const k = f.dur <= 0 ? 1 : Math.min(1, Math.max(0, (now - f.t0) / f.dur));
+  return f.from + (f.to - f.from) * k;
+}
+
 /** 이동이 끝나기까지 걸리는 시간(ms) @param {PetMotionState} pet */
 export function moveDuration(pet) {
   const m = pet.move;

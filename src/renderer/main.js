@@ -2,7 +2,7 @@
 // 이 창은 한 모니터를 담당한다. 펫 좌표는 가상 데스크톱 기준(전역)이고,
 // 그릴 때 이 창의 원점(bounds.x/y)을 빼서 로컬 좌표로 바꾼다.
 // 펫은 연결 하나당 한 마리이고, 각 펫은 자기 모니터의 창에서만(isHome) 그려진다.
-import { positionAt } from '../shared/motion.js';
+import { alphaAt, doorOpenness, positionAt } from '../shared/motion.js';
 import { createChat, refocusActiveChat } from './chat.js';
 
 /** @type {any} */
@@ -124,7 +124,7 @@ function topPetAt(x, y) {
   const now = Date.now();
   for (let i = drawOrder.length - 1; i >= 0; i--) {
     const p = pets.get(drawOrder[i]);
-    if (!p || !isHome(p)) continue;
+    if (!p || !isHome(p) || alphaAt(p.state, now) < 0.3) continue; // 문으로 들어가거나 나오는 중이라 안 보이는 펫은 누를 수 없다
     const { hit } = petRects(p, positionAt(p.state, now));
     if (x >= hit.x && x <= hit.x + hit.w && y >= hit.y && y <= hit.y + hit.h) return p;
   }
@@ -146,23 +146,74 @@ function resize() {
   lastKey = '';
 }
 
+/**
+ * 모니터 사이를 오가는 문 하나를 그린다: 아치형 문틀과 안쪽의 따뜻한 빛, 경첩 쪽으로 접히며 열리는 문짝.
+ * 스킨과 무관하게 코드로 그려서 어떤 스킨에서도 같은 문이 나온다.
+ * @param {{ x: number, y: number, w: number, h: number }} d  바닥 가운데 기준 (전역 좌표)
+ * @param {number} open  열린 정도 0~1
+ * @returns {{ x: number, y: number, w: number, h: number }} 지울 영역
+ */
+function drawDoor(d, open) {
+  const { w, h } = d;
+  const grow = 0.85 + 0.15 * open; // 열리면서 살짝 커진다
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, open * 1.6);
+  ctx.translate(d.x - origin.x, d.y - origin.y);
+  ctx.scale(grow, grow);
+  ctx.translate(-w / 2, -h);
+  const arch = [w / 2, w / 2, 3, 3];
+  // 문틀
+  ctx.fillStyle = '#7a4b2a';
+  ctx.beginPath();
+  ctx.roundRect(-5, -5, w + 10, h + 5, [w / 2 + 5, w / 2 + 5, 3, 3]);
+  ctx.fill();
+  // 안쪽 빛 + 문짝(왼쪽 경첩에서 열린 만큼 좁아진다)
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(0, 0, w, h, arch);
+  ctx.clip();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.fillRect(0, 0, w, h);
+  const leaf = w * (1 - 0.82 * open);
+  ctx.fillStyle = '#b97a45';
+  ctx.fillRect(0, 0, leaf, h);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(leaf - 3, 0, 3, h);
+  ctx.fillStyle = '#ffd54a';
+  ctx.beginPath();
+  ctx.arc(Math.max(4, leaf - 7), h * 0.55, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.restore();
+  const pad = 8;
+  return { x: d.x - origin.x - (w / 2 + 5) - pad, y: d.y - origin.y - h - 5 - pad, w: w + 10 + pad * 2, h: h + 5 + pad * 2 };
+}
+
 /** @param {number} now */
 function render(now) {
-  /** @type {{ p: Pet, pos: { x: number, y: number }, anim: string | null, frame: number, flip: boolean }[]} */
+  /** @type {{ p: Pet, pos: { x: number, y: number }, anim: string | null, frame: number, flip: boolean, alpha: number }[]} */
   const items = [];
+  /** @type {{ door: any, open: number }[]} */
+  const doors = [];
   for (const id of drawOrder) {
     const p = pets.get(id);
     if (!p || !isHome(p)) continue;
     const pos = positionAt(p.state, now);
     const anim = resolveAnim(p, p.state.anim);
-    items.push({ p, pos, anim, frame: anim ? frameOf(p, anim, now - p.state.t0) : 0, flip: isFlipped(p) });
+    const alpha = alphaAt(p.state, now);
+    if (p.state.door) {
+      const open = doorOpenness(p.state.door, now);
+      if (open > 0) doors.push({ door: p.state.door, open });
+    }
+    if (alpha <= 0.01) continue; // 문 안에 있는 동안은 그리지 않는다
+    items.push({ p, pos, anim, frame: anim ? frameOf(p, anim, now - p.state.t0) : 0, flip: isFlipped(p), alpha });
   }
 
   // 키는 절대 빈 문자열이 되면 안 된다. lastKey = ''는 "다시 그려야 함"이라는 뜻이라서, 펫이 다른 모니터로 가서
   // 이 창에 그릴 펫이 없을 때(키가 빈 문자열)에 지우기를 건너뛰어 이전 모습이 잔상으로 남는다.
   const key = 'k:' + items
-    .map((i) => [i.p.id, i.anim, i.frame, i.flip, i.pos.x.toFixed(1), i.pos.y.toFixed(1), !!i.p.sheets].join(','))
-    .join('|') + (debug ? `|${interactive}` : '');
+    .map((i) => [i.p.id, i.anim, i.frame, i.flip, i.pos.x.toFixed(1), i.pos.y.toFixed(1), i.alpha.toFixed(2), !!i.p.sheets].join(','))
+    .join('|') + doors.map((d) => `|d${d.door.x.toFixed(0)},${d.open.toFixed(2)}`).join('') + (debug ? `|${interactive}` : '');
   if (key === lastKey) return;
   lastKey = key;
 
@@ -170,9 +221,13 @@ function render(now) {
   for (const r of lastRects) ctx.clearRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4);
   lastRects = [];
 
-  for (const { p, pos, anim, frame, flip } of items) {
+  // 문은 펫 뒤에 그린다 (펫이 문 앞으로 걸어가 안으로 사라지고, 문 앞에 나타난다)
+  for (const { door, open } of doors) lastRects.push(drawDoor(door, open));
+
+  for (const { p, pos, anim, frame, flip, alpha } of items) {
     const { sprite: r, hit } = petRects(p, pos);
     lastRects.push(r);
+    ctx.globalAlpha = alpha;
     const sheet = anim ? p.sheets?.get(anim) : null;
     if (sheet) {
       const { w: fw, h: fh } = p.skin.frameSize;
@@ -194,6 +249,7 @@ function render(now) {
       ctx.roundRect(hit.x, hit.y, hit.w, hit.h, hit.w / 2.5);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
     if (debug) {
       ctx.strokeStyle = interactive ? '#00d26a' : '#ff3b30';
       ctx.strokeRect(hit.x, hit.y, hit.w, hit.h);

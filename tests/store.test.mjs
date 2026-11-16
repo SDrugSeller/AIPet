@@ -220,6 +220,17 @@ test('잠자는 자리 설정: 기본은 오른쪽 끝, 정해진 네 값만 저
   assert.equal(open(file).get().behavior.sleepSpot, 'left', '다시 열어도 유지');
 });
 
+test('알림을 보고 있는 모니터에서 전하기는 기본 켜짐이고, 불리언만 저장된다', () => {
+  const { file } = tmpFile();
+  const s = open(file);
+  assert.equal(s.get().behavior.noticeFollowsFocus, true);
+  s.update({ behavior: { noticeFollowsFocus: false } });
+  assert.equal(s.get().behavior.noticeFollowsFocus, false);
+  s.update({ behavior: { noticeFollowsFocus: 'no' } });
+  assert.equal(s.get().behavior.noticeFollowsFocus, false, '불리언이 아니면 버린다');
+  assert.equal(open(file).get().behavior.noticeFollowsFocus, false, '다시 열어도 유지');
+});
+
 test('행동/알림 설정: 범위와 형식을 검증한다', () => {
   const { file } = tmpFile();
   const s = open(file);

@@ -54,6 +54,8 @@ export const DEFAULTS = {
     neverSleep: false,
     /** 잠잘 때 가는 자리: right(오른쪽 끝) | left(왼쪽 끝) | center(가운데) | here(있던 자리에서 그대로) */
     sleepSpot: SLEEP_SPOT_DEFAULT,
+    /** 알림(쉬라는 말, 정해진 시각, 작업 완료)을 전할 때 펫이 다른 모니터에 있으면, 사용자가 보고 있는 모니터로 문을 통해 건너와서 전한다 */
+    noticeFollowsFocus: true,
   },
   spontaneous: {
     /** 먼저 말 걸기 전체 스위치. 끄면 아래 항목이 모두 동작하지 않는다. (AI를 호출하지 않으므로 토큰은 쓰지 않는다) */
@@ -131,7 +133,7 @@ const SPEC = {
   connections: validateConnections,
   skinTuning,
   permissions: { autoAllowRead: isBool, autoAllowWeb: isBool, autoAllowEdit: isBool, autoAllowShell: isBool, autoAllowFetch: isBool, codexWrite: isBool, workDir: str(1000) },
-  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool, sleepSpot: oneOf(SLEEP_SPOT_MODES) },
+  behavior: { sitOnWindows: isBool, hideOnFullscreen: isBool, sleepAfterSec: int(SLEEP_AFTER_MIN_SEC, SLEEP_AFTER_MAX_SEC), neverSleep: isBool, sleepSpot: oneOf(SLEEP_SPOT_MODES), noticeFollowsFocus: isBool },
   spontaneous: {
     enabled: isBool,
     notifyDone: isBool,

@@ -1,7 +1,7 @@
 // @ts-check
 // 펫의 행동 상태머신 (idle / walk / sleep / drag / fall / drop / 창 위로 jump 후 sit).
 // 위치와 애니메이션 상태는 여기서만 바꾸고, 바뀔 때마다 emit()으로 모든 창에 알린다.
-import { FALL_GRAVITY, moveDuration, positionAt } from '../shared/motion.js';
+import { DOOR_CLOSE_MS, DOOR_OPEN_MS, FALL_GRAVITY, moveDuration, positionAt } from '../shared/motion.js';
 import { wakeAwakeMs } from '../shared/sleep.js';
 import { bodyMetrics } from './perch.js';
 
@@ -20,9 +20,22 @@ const NUDGE_REST_MS = 1100;
 /** 깨어나는 모션(wake) 길이 */
 const WAKE_MS = 1100;
 
+// --- 다른 모니터로 이동: 이쪽 문으로 들어가서 저쪽 문으로 나온다 (모니터 배치는 몰라도 된다) ---
+/** 들어가는 문은 펫 몸에서 이만큼(px) 떨어진 곳에 연다 */
+const DOOR_GAP = 36;
+/** 문으로 들어갈 때 펫이 사라지는 시간, 나올 때 나타나는 시간 */
+const DOOR_FADE_MS = 250;
+/** 나오는 문의 높이: 작업 영역 바닥에서 위로 이 비율(0~1)만큼 올라간 곳. 문에서 나온 펫은 거기서 바닥으로 뛰어내린다 */
+const DOOR_HEIGHT_RATIO = 0.45;
+/** 나오는 문이 열려 있는 시간(나타난 뒤) */
+const DOOR_EMERGE_MS = 600;
+/** 문 크기: 몸 높이에 대한 비율, 높이 대비 너비 */
+const DOOR_BODY_RATIO = 1.15;
+const DOOR_ASPECT = 0.55;
+
 /**
- * @typedef {{ left: number, right: number, ground: number }} Area
- *   펫이 서 있을 수 있는 영역: 발 x 범위와 바닥 y (작업표시줄 위)
+ * @typedef {{ left: number, right: number, ground: number, top?: number }} Area
+ *   펫이 서 있을 수 있는 영역: 발 x 범위와 바닥 y (작업표시줄 위). top: 작업 영역의 위쪽 y (없으면 바닥에서 600 위로 본다)
  *
  * @param {{
  *   skin: any,
@@ -52,9 +65,21 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     t0: Date.now(),
     /** @type {import('../shared/motion.js').Move | null} */
     move: null,
+    /** 모니터 사이를 이동할 때의 투명도 변화와 문. 둘 다 시간으로 계산되어 렌더러가 매 프레임 그린다. */
+    /** @type {import('../shared/motion.js').Fade | null} */
+    fade: null,
+    /** @type {import('../shared/motion.js').Door | null} */
+    door: null,
   };
 
-  const { bodyLeft, bodyRight } = bodyMetrics(skin);
+  const { bodyLeft, bodyRight, bodyUp } = bodyMetrics(skin);
+
+  /** 다른 모니터로 가는 중인 이동. done: 도착했거나 취소됐을 때 부를 함수들 */
+  /** @type {{ display: number, done: ((reason: 'arrived' | 'cancelled') => void)[] } | null} */
+  let traveling = null;
+  /** 지금은 출발할 수 없어서(창 위, 낙하 중) 바닥에 선 뒤로 미룬 이동 */
+  /** @type {{ display: number, done: ((reason: 'arrived' | 'cancelled') => void)[] } | null} */
+  let pendingTravel = null;
 
   /** @type {NodeJS.Timeout | null} */
   let timer = null;
@@ -120,7 +145,8 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
   /** @type {{ onEnd?: (reason: 'done' | 'skipped' | 'cancelled') => void } | null} */
   let visiting = null;
 
-  const canVisitNow = () => !visiting && !hold && !agentAnim && !perched && !pet.dragging && (pet.anim === 'idle' || pet.anim === 'walk');
+  const canVisitNow = () =>
+    !visiting && !hold && !agentAnim && !perched && !pet.dragging && !traveling && !pendingTravel && (pet.anim === 'idle' || pet.anim === 'walk');
 
   /** @param {'done' | 'skipped' | 'cancelled'} reason */
   function endVisit(reason) {
@@ -130,10 +156,20 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
   }
 
   /** 낙하/점프/착지 중에는 애니메이션을 바꾸지 않는다 (끝나면 enterIdle이 반영한다). */
-  const busyMoving = () => pet.dragging || pet.anim === 'fall' || pet.anim === 'drop' || pet.anim === 'jump';
+  const busyMoving = () => pet.dragging || traveling !== null || pet.anim === 'fall' || pet.anim === 'drop' || pet.anim === 'jump';
 
   function enterIdle() {
     if (visiting) endVisit('cancelled'); // 방문 도중에 다른 동작이 끼어들었다
+    if (pendingTravel && !pet.dragging) {
+      // 미뤄 둔 모니터 이동: 창 위에 있으면 먼저 내려오고, 바닥에 서면 출발한다. 대화창이 열렸으면 포기한다.
+      if (hold) cancelTravel();
+      else if (perched) return fallToGround();
+      else {
+        const t = pendingTravel;
+        pendingTravel = null;
+        return beginTravel(t);
+      }
+    }
     settle();
     if (agentAnim) {
       const name = agentAnim;
@@ -298,6 +334,105 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     land();
   }
 
+  // --- 다른 모니터로 이동 ---
+
+  /** 이동이 끝났다(도착/취소): 기다리던 쪽에 알린다 @param {'arrived' | 'cancelled'} reason */
+  function finishTravel(reason) {
+    const t = traveling;
+    traveling = null;
+    for (const fn of t?.done ?? []) fn(reason);
+  }
+
+  /** 이동을 중단한다 (사용자가 집어 올렸거나 모니터 구성이 바뀌었다). 문과 투명도를 지우고 있는 자리에 둔다. */
+  function cancelTravel() {
+    if (pendingTravel) {
+      const p = pendingTravel;
+      pendingTravel = null;
+      for (const fn of p.done) fn('cancelled');
+    }
+    if (!traveling) return;
+    pet.fade = null;
+    pet.door = null;
+    finishTravel('cancelled');
+  }
+
+  /** 문의 크기: 몸 높이를 기준으로 한다 (스킨마다 몸 크기가 다르다) */
+  function doorSize() {
+    const h = Math.max(60, bodyUp * DOOR_BODY_RATIO);
+    return { w: h * DOOR_ASPECT, h };
+  }
+
+  /** 이 모니터에서 문을 열고 들어간다: 문 쪽으로 걸어가 사라지고, 문이 닫히면 저쪽으로 넘어간다. @param {NonNullable<typeof traveling>} t */
+  function beginTravel(t) {
+    if (visiting) endVisit('cancelled');
+    traveling = t;
+    lastActive = Date.now();
+    settle();
+    const a = area(pet.display);
+    if (!a) return arrive(); // 지금 모니터가 사라졌다: 들어가는 모션 없이 바로 건너간다
+    const { w, h } = doorSize();
+    // 화면 가운데 쪽에 문을 열어야 몸이 화면 밖으로 나가지 않는다
+    const dir = pet.x < (a.left + a.right) / 2 ? 1 : -1;
+    const reach = (dir > 0 ? bodyRight : bodyLeft) + DOOR_GAP;
+    let x = clamp(pet.x + dir * reach, a.left, a.right);
+    if (Math.abs(x - pet.x) < 24) x = clamp(pet.x - dir * reach, a.left, a.right);
+    const speed = skin.animations.walk?.moveSpeed ?? 60;
+    const walkMs = (Math.abs(x - pet.x) / speed) * 1000;
+    pet.door = { x, y: pet.y, w, h, t0: Date.now(), dur: DOOR_OPEN_MS + walkMs + DOOR_FADE_MS + DOOR_CLOSE_MS };
+    startWalk(x, () => {
+      // 문 앞에 도착: 문 안으로 사라진다
+      pet.fade = { t0: Date.now(), dur: DOOR_FADE_MS, from: 1, to: 0 };
+      emit();
+      after(DOOR_FADE_MS + DOOR_CLOSE_MS, arrive);
+    });
+  }
+
+  /** 저쪽 모니터에 문을 열고 나와서 바닥으로 뛰어내린다. */
+  function arrive() {
+    const t = traveling;
+    if (!t) return;
+    const a = area(t.display);
+    if (!a) {
+      // 가려던 모니터가 그 사이 사라졌다: 있던 모니터에 다시 나타난다
+      pet.fade = null;
+      pet.door = null;
+      finishTravel('cancelled');
+      return enterIdle();
+    }
+    const { w, h } = doorSize();
+    const top = a.top ?? a.ground - 600;
+    // 문 높이는 작업 영역 높이의 일정 비율. 머리와 문이 화면 위로 나가지 않게 하고, 너무 낮은 화면에서는 바닥 가까이로 둔다.
+    const headroom = skin.anchor.y * (skin.scale ?? 1);
+    const want = a.ground - (a.ground - top) * DOOR_HEIGHT_RATIO;
+    const y = Math.min(a.ground - 20, Math.max(want, top + Math.max(headroom, h) + 8));
+    const x = a.left + (a.right - a.left) * rand(0.25, 0.75);
+
+    pet.display = t.display;
+    pet.x = x;
+    pet.y = y;
+    pet.move = null;
+    pet.fade = { t0: Date.now(), dur: 1, from: 0, to: 0 }; // 문이 열릴 때까지는 보이지 않는다
+    pet.door = { x, y, w, h, t0: Date.now(), dur: DOOR_OPEN_MS + DOOR_EMERGE_MS + DOOR_CLOSE_MS };
+    pet.facing = skin.facing ?? 'left';
+    setAnim('idle');
+    emit();
+    after(DOOR_OPEN_MS, () => {
+      // 문이 열렸다: 나타나면서 바닥까지 뛰어내린다
+      const g = area(pet.display);
+      if (!g) return enterIdle();
+      pet.fade = { t0: Date.now(), dur: DOOR_FADE_MS, from: 0, to: 1 };
+      setAnim('fall', { kind: 'fall', y1: g.ground, g: FALL_GRAVITY });
+      emit();
+      after(moveDuration(pet), () => {
+        pet.y = g.ground;
+        pet.move = null;
+        pet.fade = null;
+        finishTravel('arrived'); // 착지하면 알린다: 말풍선은 여기서 뜬다
+        land();
+      });
+    });
+  }
+
   return {
     pet,
 
@@ -313,11 +448,44 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
       return perched;
     },
 
+    /**
+     * 다른 모니터로 건너간다: 이 모니터에 문을 열고 들어가, 저쪽 모니터의 문에서 나와 바닥으로 뛰어내린다.
+     * 모니터의 배치와 상관없이 문으로 이어지므로 경계까지 걸어가지 않는다. 창 위에 있거나 낙하 중이면 바닥에 선 뒤에 출발한다.
+     * 착지하거나(arrived) 도중에 취소되면(cancelled) onDone을 한 번 부른다.
+     * 이미 그 모니터에 있거나, 갈 수 없거나(모니터가 없음, 드래그 중), 다른 모니터로 가는 중이면 false: 호출한 쪽이 그 자리에서 처리한다.
+     * @param {number} display @param {(reason: 'arrived' | 'cancelled') => void} onDone
+     */
+    travel(display, onDone) {
+      if (disposed) return false;
+      const queue = traveling ?? pendingTravel;
+      if (queue) {
+        if (queue.display !== display) return false;
+        queue.done.push(onDone); // 같은 곳으로 가는 중이면 함께 기다린다
+        return true;
+      }
+      if (pet.dragging || display === pet.display || !area(display)) return false;
+      const t = { display, done: [onDone] };
+      if (perched || busyMoving()) {
+        pendingTravel = t;
+        if (perched) fallToGround();
+        return true;
+      }
+      beginTravel(t);
+      return true;
+    },
+
+    /** 다른 모니터로 가는 중인가 (테스트/디버그용) */
+    get traveling() {
+      return traveling !== null || pendingTravel !== null;
+    },
+
     /** 처음 위치를 정하고 행동을 시작한다. */
     start(/** @type {number} */ display, /** @type {number} */ x) {
       pet.display = display;
       pet.x = x;
       pet.y = area(display)?.ground ?? 0;
+      pet.fade = null;
+      pet.door = null;
       lastActive = Date.now();
       enterIdle();
     },
@@ -458,6 +626,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
 
     startDrag() {
       if (visiting) endVisit('cancelled');
+      cancelTravel();
       clearTimer();
       settle();
       if (perched) lastPerchEnd = Date.now();
@@ -477,6 +646,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     /** 모니터 구성이 바뀐 뒤 바닥에 다시 세운다. */
     relayout() {
       if (pet.dragging) return;
+      cancelTravel();
       perched = null;
       const a = area(pet.display);
       if (a) {

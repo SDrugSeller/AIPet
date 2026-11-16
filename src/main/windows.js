@@ -96,6 +96,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
       left: wa.x + pet.halfLeft,
       right: Math.max(wa.x + pet.halfLeft, wa.x + wa.width - pet.halfRight),
       ground: wa.y + wa.height,
+      top: wa.y,
     };
   }
 
@@ -170,10 +171,42 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
 
   // --- 알림 말풍선 (자발적 발화) ---
 
-  /** @param {string} petId @param {{ text: string, kind: string }} n */
-  function showNotice(petId, { text, kind }) {
+  /**
+   * 사용자가 지금 보고 있는 모니터: 활성 창이 있는 모니터. 활성 창을 모르면(감시 꺼짐, 최소화, 바탕화면) 마우스 커서가 있는 모니터.
+   * @returns {number}
+   */
+  function activeDisplayId() {
+    const info = foreground;
+    if (info && !info.none && info.hwnd && !info.min && (info.w ?? 0) > 0 && (info.h ?? 0) > 0) {
+      const r = screen.screenToDipRect(null, { x: info.x ?? 0, y: info.y ?? 0, width: info.w ?? 0, height: info.h ?? 0 });
+      return screen.getDisplayNearestPoint({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }).id;
+    }
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id;
+  }
+
+  /**
+   * 알림을 띄운다. 설정이 켜져 있고 펫이 다른 모니터에 있으면, 먼저 사용자가 보고 있는 모니터로 문을 통해 건너온 뒤 착지하면 띄운다.
+   * 설정 안내(setup)는 조용히 보여 주는 것이라 옮기지 않는다.
+   * @param {string} petId @param {{ text: string, kind: string }} n
+   */
+  function showNotice(petId, n) {
     const pet = pets.get(petId);
     if (!pet || pet.host.isOpen) return; // 이미 대화창이 열려 있다
+    if (n.kind !== 'setup' && store.get().behavior.noticeFollowsFocus) {
+      const want = activeDisplayId();
+      if (pet.engine.travel(want, () => presentNotice(petId, n))) {
+        log('notice', petId, '알림을 전하러 다른 모니터로 감', `${pet.engine.pet.display} → ${want}`);
+        return;
+      }
+    }
+    presentNotice(petId, n);
+  }
+
+  /** @param {string} petId @param {{ text: string, kind: string }} n */
+  function presentNotice(petId, { text, kind }) {
+    const pet = pets.get(petId);
+    if (!pet || pet.host.isOpen) return; // 이동하는 사이 대화창이 열렸거나 펫이 사라졌다
+    if (!visible || suspended) return; // 이동하는 사이 펫이 숨겨졌다
     pet.noticeActive = true;
     pet.noticeInfo = { text, kind }; // 아직 열리지 않은 창이 나중에 열려도 지금 떠 있는 알림을 받도록 기억해 둔다
     sendAll('notice:show', { petId, text, kind });
