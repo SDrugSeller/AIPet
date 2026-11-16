@@ -9,6 +9,7 @@ import { createSocial } from './social.js';
 import { sleepSpotX } from './sleepSpot.js';
 import { needsSetupHint, SETUP_HINT_TEXT } from './setupHint.js';
 import { createNotifier } from './spontaneous.js';
+import { pickSpeaker } from './speaker.js';
 import { createWindowWatcher } from './windowWatcher.js';
 
 /**
@@ -197,8 +198,19 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     if (!pet.host.snapshot().busy) pet.engine.setAgentAnim(null);
   }
 
-  /** 먼저 말을 거는 펫: 목록의 첫 번째 펫 */
+  /** 첫 번째 펫: 첫 실행 안내와 디버그 훅이 쓴다 */
   const primaryPetId = () => [...pets.keys()][0];
+
+  /** 직전에 먼저 말을 건 펫 (돌아가며 말하기 위해 기억한다) */
+  /** @type {string | null} */
+  let lastSpeakerId = null;
+
+  /** 펫이 정해지지 않은 알림(쉬라는 안내, 정해진 시각)을 말할 펫: 깨어 있는 펫을 먼저, 돌아가며 */
+  function nextSpeakerId() {
+    const id = pickSpeaker({ ids: [...pets.keys()], isAwake: (pid) => !pets.get(pid)?.engine.sleeping, lastId: lastSpeakerId });
+    lastSpeakerId = id;
+    return id;
+  }
 
   const anyChatActive = () => [...pets.values()].some((p) => p.host.isOpen || p.host.snapshot().busy);
 
@@ -212,7 +224,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     }),
     idleSeconds: () => powerMonitor.getSystemIdleTime(),
     show: ({ text, kind, petId }) => {
-      const id = petId ?? primaryPetId();
+      const id = petId ?? nextSpeakerId();
       if (id) showNotice(id, { text, kind });
     },
   });
