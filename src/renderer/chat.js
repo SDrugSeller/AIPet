@@ -280,6 +280,8 @@ export function createChat(api, pet, layer, template) {
         if (visible) {
           raise(el);
           activeChat = self;
+          // 닫혀 있는 동안 쌓인 대화는 숨겨진 요소라 맨 아래로 내려지지 않았다(숨겨진 요소의 scrollHeight는 0). 열 때 최신 대화로 내린다.
+          logEl.scrollTop = logEl.scrollHeight;
           focusInput();
         } else if (activeChat === self) {
           activeChat = null;
