@@ -6,6 +6,8 @@
 //   - 가까운 쪽(왼쪽) 끝은 원(타원) 전체가 보이고 그 안에 어두운 구멍이 보인다.
 //   - 먼 쪽(오른쪽) 끝은 원의 절반(바깥으로 볼록한 호)만 보인다. 그 끝의 면은 안 보인다.
 //   - 몸통 표면의 이음매도 먼 쪽 끝과 같은 방향(오른쪽으로 볼록한 호)이다.
+// 두 장으로 나눠 저장한다: door.png(전체, 펫 뒤)와 door-front.png(입구 가장자리 안쪽 몸통, 펫 앞).
+// 펫이 입구로 걸어 들어가면 앞 그림이 몸을 가려 관 속으로 들어가는 것처럼 보인다.
 // 원본 이미지를 쓰지 않고 전부 도형으로 그린 그림이다. (skins/genba-cat/ 등 개인 스킨 폴더는 저장소에 포함되지 않는다)
 //   사용법: node tools/genba/gen-pipe.mjs            → genba가 들어간 스킨 모두
 //           node tools/genba/gen-pipe.mjs 출력.png   → 그림 한 장만 저장 (skin.json은 건드리지 않음)
@@ -28,6 +30,7 @@ const RX = 40; // 끝면 타원의 가로 반지름 (옆에서 비스듬히 본 
 const X0 = 56; // 가까운 쪽(왼쪽) 끝면 중심 (그림이 좌우 가운데 x=128에 오도록 정했다. 좌우로 뒤집어도 자리가 같다)
 const X1 = 200; // 먼 쪽(오른쪽) 끝면 중심
 const SEAM_X = 126; // 몸통의 이음매 위치
+const ENTER = 56; // 펫이 안으로 가려질 때까지 문 기준점에서 더 걸어가는 거리 (그림 픽셀)
 
 const INK = [28, 28, 32];
 const CONCRETE = [198, 198, 198];
@@ -78,10 +81,13 @@ function dot(/** @type {number} */ x, /** @type {number} */ y, /** @type {number
 }
 
 /** 한 점의 색 [r, g, b, a(0~1)] */
-function sample(/** @type {number} */ x, /** @type {number} */ y) {
+function sample(/** @type {number} */ x, /** @type {number} */ y, /** @type {boolean} */ front) {
   /** @type {number[]} */
   let col = [0, 0, 0, 0];
-  if (shadow(x, y) < 0) col = [0, 0, 0, 0.2]; // 바닥 그림자
+  if (!front && shadow(x, y) < 0) col = [0, 0, 0, 0.2]; // 바닥 그림자
+  // 앞 레이어: 펫이 입구로 들어가면 가려지는 부분만. 가까운 쪽 끝면의 오른쪽 둘레(입구 가장자리)에서부터 몸통 쪽.
+  // 끝면 안쪽(구멍과 테두리)은 펫 뒤에 그려서 펫이 입구 앞에서는 구멍 앞에 보인다.
+  if (front && (x < X0 || capNear(x, y) < -1.4)) return col;
   const d = shape(x, y);
   if (d >= 2.4) return col;
   if (d >= 0) return [...INK, 1]; // 바깥 외곽선
@@ -119,8 +125,8 @@ function sample(/** @type {number} */ x, /** @type {number} */ y) {
   return col;
 }
 
-/** 토관 그림을 RGBA 픽셀로 그린다 */
-function render() {
+/** 토관 그림을 RGBA 픽셀로 그린다. front면 펫보다 앞에 그릴 부분만 */
+function render(/** @type {boolean} */ front) {
   const data = new Uint8Array(W * H * 4);
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
@@ -130,7 +136,7 @@ function render() {
       let a = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const c = sample(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS);
+          const c = sample(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS, front);
           r += c[0] * c[3];
           g += c[1] * c[3];
           b += c[2] * c[3];
@@ -171,12 +177,15 @@ function genbaSkinDirs() {
   return out;
 }
 
-const png = render();
+const png = render(false);
+const pngFront = render(true);
 const target = process.argv[2];
 if (target) {
   mkdirSync(path.dirname(path.resolve(target)), { recursive: true });
   writeFileSync(target, png);
-  console.log(`토관 ${W}x${H} → ${target}`);
+  const frontTarget = target.replace(/(\.png)?$/i, '-front.png');
+  writeFileSync(frontTarget, pngFront);
+  console.log(`토관 ${W}x${H} → ${target}, ${frontTarget}`);
 } else {
   const dirs = genbaSkinDirs();
   if (!dirs.length) console.log('genba가 들어간 스킨 폴더를 찾지 못했어요');
@@ -185,8 +194,9 @@ if (target) {
     const skin = JSON.parse(readFileSync(file, 'utf8'));
     // 문이 펫 키와 같은 높이로 보이게: 펫이 화면에서 차지하는 높이 ÷ 그림 높이
     const scale = Math.round(((skin.frameSize.h * (skin.scale ?? 1)) / H) * 10000) / 10000;
-    skin.door = { sheet: 'door.png', frames: 1, frameSize: { w: W, h: H }, anchor: { x: (X0 - RX + X1 + RX) / 2, y: 244 }, scale, opening: 'left' };
+    skin.door = { sheet: 'door.png', frames: 1, frameSize: { w: W, h: H }, anchor: { x: (X0 - RX + X1 + RX) / 2, y: 244 }, scale, opening: 'left', front: 'door-front.png', enter: ENTER };
     writeFileSync(path.join(dir, 'door.png'), png);
+    writeFileSync(path.join(dir, 'door-front.png'), pngFront);
     writeFileSync(file, `${JSON.stringify(skin, null, 2)}\n`);
     console.log(`${dir}  (문 배율 ${scale})`);
   }

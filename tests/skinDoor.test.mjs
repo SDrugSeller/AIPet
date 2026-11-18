@@ -42,6 +42,11 @@ const BAD = [
   ['anchor 숫자 아님', (d) => (d.anchor.x = '64')],
   ['scale 0', (d) => (d.scale = 0)],
   ['opening이 left/right가 아님', (d) => (d.opening = 'up')],
+  ['front 상위 경로', (d) => (d.front = '../f.png')],
+  ['front PNG 아님', (d) => (d.front = 'f.svg')],
+  ['front 문자열 아님', (d) => (d.front = 5)],
+  ['enter 음수', (d) => (d.enter = -1)],
+  ['enter 너무 큼', (d) => (d.enter = 5000)],
 ];
 for (const [label, mutate] of BAD) {
   test(`validateDoor: 거부 - ${label}`, () => {
@@ -90,6 +95,28 @@ test('door.opening: left/right는 통과하고 환산 결과에 그대로 담기
   assert.equal(validateDoor({ ...goodDoor(), opening: 'right' }), null);
   assert.equal(resolveDoor({ door: { ...goodDoor(), opening: 'left' }, owner: 'a', factor: 1, pixelArt: false }).opening, 'left');
   assert.equal(resolveDoor({ door: goodDoor(), owner: 'a', factor: 1, pixelArt: false }).opening, null);
+});
+
+test('door.front/enter: 통과하고 환산 결과에 담기며(enter는 화면 크기로), 생략하면 앞 레이어 없음', () => {
+  const layered = { ...goodDoor(), front: 'door-front.png', enter: 56, scale: 0.5 };
+  assert.equal(validateDoor(layered), null);
+  const r = resolveDoor({ door: layered, owner: 'a', factor: 1, pixelArt: false });
+  assert.equal(r.front, 'door-front.png');
+  assert.equal(r.enter, 28);
+  const plain = resolveDoor({ door: goodDoor(), owner: 'a', factor: 1, pixelArt: false });
+  assert.equal(plain.front, null);
+  assert.equal(plain.enter, 0);
+});
+
+test('genba 스킨의 토관: 뒤/앞 그림이 같은 크기의 PNG다 (스킨 폴더가 있을 때만)', () => {
+  const dir = new URL('../skins/genba-cat/', import.meta.url);
+  if (!fs.existsSync(new URL('skin.json', dir))) return; // 개인 스킨은 저장소에 없다
+  const skin = JSON.parse(fs.readFileSync(new URL('skin.json', dir), 'utf8'));
+  assert.equal(validateDoor(skin.door), null);
+  const a = fs.readFileSync(new URL(skin.door.sheet, dir));
+  const b = fs.readFileSync(new URL(skin.door.front, dir));
+  assert.equal(a.readUInt32BE(16), b.readUInt32BE(16));
+  assert.equal(a.readUInt32BE(20), b.readUInt32BE(20));
 });
 
 test('doorFactor: 펫 높이에 비례하고, 문 크기(%)가 문만 따로 키우고 줄인다', () => {

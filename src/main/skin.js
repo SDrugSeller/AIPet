@@ -69,7 +69,9 @@ export async function loadSkin(name, tuning) {
   let door = null;
   if (raw.door) {
     const sheet = path.resolve(dir, String(raw.door.sheet));
-    if (!isInside(dir, sheet)) throw new Error('skin.json: door 시트 경로가 스킨 폴더를 벗어납니다');
+    if (!isInside(dir, sheet) || (raw.door.front && !isInside(dir, path.resolve(dir, String(raw.door.front))))) {
+      throw new Error('skin.json: door 시트 경로가 스킨 폴더를 벗어납니다');
+    }
     const factor = doorFactor({ petDisplayH: t.displaySize.h, ownerPetDisplayH: raw.frameSize.h * (raw.scale ?? 1), percent: tuning?.doorPercent });
     door = resolveDoor({ door: raw.door, owner: name, factor, pixelArt: raw.pixelArt ?? false });
   } else if (name !== DEFAULT_SKIN) {

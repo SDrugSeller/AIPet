@@ -20,10 +20,10 @@ const AREAS = /** @type {Record<number, { left: number, right: number, ground: n
 });
 
 /** 가짜 시계/타이머와 고정 난수(0.1)로 엔진을 돌린다. 펫은 모니터 1의 가운데에서 시작한다. */
-function setup() {
+function setup(/** @type {any} */ useSkin = skin) {
   mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
   mock.method(Math, 'random', () => 0.1);
-  const engine = createPetEngine({ skin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
+  const engine = createPetEngine({ skin: useSkin, area: (d) => AREAS[d] ?? null, emit: () => {}, sleepAfterMs: 60 * 60_000 });
   engine.start(1, 960);
   let elapsed = 0;
   /** 시작부터 ms가 될 때까지 시간을 흘린다 */
@@ -81,6 +81,61 @@ test('다른 모니터로: 문을 열고 들어가 사라지고, 저쪽 문에�
     until(4000); // 착지 모션이 끝나고 평소로
     assert.notEqual(engine.pet.anim, 'fall');
     assert.equal(engine.pet.display, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test('앞 레이어가 있는 문(토관): 입구에서 떨어져 걷기 시작해 안쪽으로 걸어 들어가고, 저쪽에서는 안쪽에서 입구로 걸어 나와 떨어진다', () => {
+  const door = { skin: 'pipe', sheet: 'door.png', frames: 1, openFrames: 1, frameSize: { w: 256, h: 256 }, anchor: { x: 128, y: 244 }, scale: 0.5, pixelArt: false, opening: 'left', front: 'door-front.png', enter: 28, display: { w: 128, h: 128 } };
+  const { engine, until, cleanup, now } = setup({ ...skin, door });
+  try {
+    const startX = engine.pet.x;
+    /** @type {string[]} */
+    const done = [];
+    engine.travel(2, (r) => done.push(r));
+    const d = /** @type {NonNullable<typeof engine.pet.door>} */ (engine.pet.door);
+    // 문 입구 쪽 가장자리가 몸에서 떨어져 있다 (처음부터 앞 레이어에 가려지지 않게)
+    const bodyEdge = skin.hitbox.x + skin.hitbox.w - skin.anchor.x;
+    assert.ok(Math.abs(d.x - startX) >= bodyEdge + door.display.w / 2, `문 중심이 몸에서 충분히 떨어져 있다: ${d.x - startX}`);
+    const inward = Math.sign(d.x - startX);
+    const mv = /** @type {any} */ (engine.pet.move);
+    assert.equal(Math.sign(mv.x1 - startX), inward);
+    assert.equal(Math.round(Math.abs(mv.x1 - d.x)), 28, '문 중심에서 안쪽으로 enter만큼 더 걸어 들어간다');
+
+    until(10000);
+    assert.equal(engine.pet.display, 2);
+    assert.deepEqual(done, ['arrived']);
+    assert.equal(engine.pet.y, 900);
+    assert.equal(engine.traveling, false);
+    assert.ok(alphaAt(engine.pet, now()) === 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test('앞 레이어가 있으면 저쪽 문에서 펫이 문 안쪽 자리에서 시작해 입구 쪽(바라보는 쪽)으로 걸어 나온다', () => {
+  const door = { skin: 'pipe', sheet: 'door.png', frames: 1, openFrames: 1, frameSize: { w: 256, h: 256 }, anchor: { x: 128, y: 244 }, scale: 0.5, pixelArt: false, opening: 'left', front: 'door-front.png', enter: 28, display: { w: 128, h: 128 } };
+  const { engine, until, cleanup } = setup({ ...skin, door });
+  try {
+    engine.travel(2, () => {});
+    // 이쪽 문 안으로 걸어 들어가 사라지고 문이 닫힐 때까지 흘린다. 정확한 시각을 모르니 건너가는 순간을 기다린다.
+    let t = 0;
+    while (engine.pet.display !== 2 && t < 20_000) {
+      t += 50;
+      until(t);
+    }
+    assert.equal(engine.pet.display, 2);
+    const d = /** @type {NonNullable<typeof engine.pet.door>} */ (engine.pet.door);
+    const outDir = skin.facing === 'left' ? -1 : 1;
+    assert.equal(d.mouth, skin.facing);
+    assert.equal(Math.round(engine.pet.x - d.x), -outDir * 28, '입구 반대쪽(안쪽)에서 시작한다');
+    until(t + 1500); // 문이 열린 뒤 입구로 걸어 나오는 중
+    assert.equal(engine.pet.anim, 'walk');
+    assert.equal(engine.pet.y, d.y, '문 바닥 높이에서 걷는다');
+    assert.equal(engine.pet.facing, skin.facing);
+    until(t + 8000);
+    assert.equal(engine.pet.y, 900, '걸어 나온 뒤 떨어져 바닥에 닿는다');
   } finally {
     cleanup();
   }

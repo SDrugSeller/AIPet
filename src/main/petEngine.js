@@ -423,9 +423,9 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
    */
   function doorSize() {
     const d = skin.door;
-    if (d) return { w: d.display.w, h: d.anchor.y * d.scale };
+    if (d) return { w: d.display.w, h: d.anchor.y * d.scale, layered: !!d.front, enter: d.front ? d.enter : 0 };
     const h = Math.max(60, bodyUp * DOOR_BODY_RATIO);
-    return { w: h * DOOR_ASPECT, h };
+    return { w: h * DOOR_ASPECT, h, layered: false, enter: 0 };
   }
 
   /** 이 모니터에서 문을 열고 들어간다: 문 쪽으로 걸어가 사라지고, 문이 닫히면 저쪽으로 넘어간다. @param {Travel} t */
@@ -436,19 +436,23 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     settle();
     const a = area(pet.display);
     if (!a) return arrive(); // 지금 모니터가 사라졌다: 들어가는 모션 없이 바로 건너간다
-    const { w, h } = doorSize();
+    const { w, h, layered, enter } = doorSize();
     // 화면 가운데 쪽에 문을 열어야 몸이 화면 밖으로 나가지 않는다
     const dir = pet.x < (a.left + a.right) / 2 ? 1 : -1;
-    const reach = (dir > 0 ? bodyRight : bodyLeft) + DOOR_GAP;
+    // 앞뒤 레이어가 있는 문(토관)은 입구 가장자리가 펫에서 DOOR_GAP만큼 떨어지도록 문 폭의 절반을 더 띄운다 (처음부터 가려지지 않게)
+    const reach = (dir > 0 ? bodyRight : bodyLeft) + DOOR_GAP + (layered ? w / 2 : 0);
     let x = clamp(pet.x + dir * reach, a.left, a.right);
     if (Math.abs(x - pet.x) < 24) x = clamp(pet.x - dir * reach, a.left, a.right);
+    // 앞 레이어가 있으면 몸이 가려질 때까지 문 안쪽으로 더 걸어 들어간다
+    const inward = x > pet.x ? 1 : -1;
+    const stop = layered ? clamp(x + inward * enter, a.left, a.right) : x;
     const speed = skin.animations.walk?.moveSpeed ?? 60;
-    const walkMs = (Math.abs(x - pet.x) / speed) * 1000;
+    const walkMs = (Math.abs(stop - pet.x) / speed) * 1000;
     // 문(토관)의 입구는 다가오는 펫 쪽을 본다: 오른쪽으로 걸어가면 입구는 문의 왼쪽에, 왼쪽으로 걸어가면 오른쪽에 있다.
     const mouth = x > pet.x ? 'left' : 'right';
     pet.door = { x, y: pet.y, w, h, mouth, t0: Date.now(), dur: DOOR_OPEN_MS + walkMs + DOOR_FADE_MS + DOOR_CLOSE_MS };
-    startWalk(x, () => {
-      // 문 앞에 도착: 문 안으로 사라진다
+    startWalk(stop, () => {
+      // 문 앞(앞 레이어가 있으면 문 안)에 도착: 문 안으로 사라진다
       pet.fade = { t0: Date.now(), dur: DOOR_FADE_MS, from: 1, to: 0 };
       emit();
       after(DOOR_FADE_MS + DOOR_CLOSE_MS, arrive);
@@ -467,7 +471,7 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
       finishTravel('cancelled');
       return enterIdle();
     }
-    const { w, h } = doorSize();
+    const { w, h, layered, enter } = doorSize();
     const top = a.top ?? a.ground - 600;
     // 문 높이는 작업 영역 높이의 일정 비율. 머리와 문이 화면 위로 나가지 않게 하고, 너무 낮은 화면에서는 바닥 가까이로 둔다.
     const headroom = skin.anchor.y * (skin.scale ?? 1);
@@ -476,13 +480,19 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
     const x = t.x !== undefined ? clamp(t.x, a.left, a.right) : a.left + (a.right - a.left) * rand(0.25, 0.75);
 
     pet.display = t.display;
-    pet.x = x;
     pet.y = y;
     pet.move = null;
     pet.fade = { t0: Date.now(), dur: 1, from: 0, to: 0 }; // 문이 열릴 때까지는 보이지 않는다
     pet.facing = skin.facing ?? 'left';
+    const outDir = pet.facing === 'left' ? -1 : 1;
+    // 앞 레이어가 있는 문은 문 안쪽(입구 반대쪽)에서 시작해 입구로 걸어 나온 뒤 떨어진다.
+    // 입구 가장자리에서 몸이 빠져나올 만큼 더 걸어가야 문 모서리에 걸리지 않는다.
+    const startX = layered ? clamp(x - outDir * enter, a.left, a.right) : x;
+    const outX = clamp(x + outDir * (w / 2 + (outDir > 0 ? bodyRight : bodyLeft) + DOOR_GAP / 2), a.left, a.right);
+    const walkOutMs = layered ? (Math.abs(outX - startX) / (skin.animations.walk?.moveSpeed ?? 60)) * 1000 : 0;
+    pet.x = startX;
     // 나오는 펫이 바라보는 쪽으로 입구가 열려 있다 (입구에서 나와 그쪽을 보며 떨어진다)
-    pet.door = { x, y, w, h, mouth: pet.facing, t0: Date.now(), dur: DOOR_OPEN_MS + DOOR_EMERGE_MS + DOOR_CLOSE_MS };
+    pet.door = { x, y, w, h, mouth: pet.facing, t0: Date.now(), dur: DOOR_OPEN_MS + walkOutMs + DOOR_EMERGE_MS + DOOR_CLOSE_MS };
     setAnim('idle');
     emit();
     after(DOOR_OPEN_MS, () => {
@@ -490,15 +500,19 @@ export function createPetEngine({ skin, area, emit: emitRaw, sleepAfterMs: sleep
       const g = area(pet.display);
       if (!g) return enterIdle();
       pet.fade = { t0: Date.now(), dur: DOOR_FADE_MS, from: 0, to: 1 };
-      setAnim('fall', { kind: 'fall', y1: g.ground, g: FALL_GRAVITY });
-      emit();
-      after(moveDuration(pet), () => {
-        pet.y = g.ground;
-        pet.move = null;
-        pet.fade = null;
-        finishTravel('arrived'); // 착지하면 알린다: 말풍선은 여기서 뜬다
-        land(t.afterLand); // 착지 모션이 끝나면 이어서 할 일(깨우러 가기)이 있으면 그것을, 없으면 평소로
-      });
+      const drop = () => {
+        setAnim('fall', { kind: 'fall', y1: g.ground, g: FALL_GRAVITY });
+        emit();
+        after(moveDuration(pet), () => {
+          pet.y = g.ground;
+          pet.move = null;
+          pet.fade = null;
+          finishTravel('arrived'); // 착지하면 알린다: 말풍선은 여기서 뜬다
+          land(t.afterLand); // 착지 모션이 끝나면 이어서 할 일(깨우러 가기)이 있으면 그것을, 없으면 평소로
+        });
+      };
+      if (layered) startWalk(outX, drop); // 앞 레이어 뒤에서 입구로 걸어 나와서 문 가장자리에서 떨어진다
+      else drop();
     });
   }
 

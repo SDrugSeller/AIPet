@@ -88,7 +88,9 @@
         "frameSize": { "type": "object", "required": ["w", "h"], "additionalProperties": false, "properties": { "w": { "type": "integer", "minimum": 8, "maximum": 2048 }, "h": { "type": "integer", "minimum": 8, "maximum": 2048 } } },
         "anchor": { "$ref": "#/$defs/point", "description": "문 바닥 가운데(문이 서 있는 자리), 프레임 좌상단 기준 픽셀" },
         "scale": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "화면 배율. 펫 크기를 바꾸면 같은 비율로 따라간다" },
-        "opening": { "enum": ["left", "right"], "description": "방향이 있는 그림(토관처럼 입구가 한쪽을 보는 것)에서 시트 속 입구가 향한 쪽. 주면 입구가 다가오는 펫 쪽을 보도록 좌우로 뒤집어 그린다. 생략하면 뒤집지 않는다" }
+        "opening": { "enum": ["left", "right"], "description": "방향이 있는 그림(토관처럼 입구가 한쪽을 보는 것)에서 시트 속 입구가 향한 쪽. 주면 입구가 다가오는 펫 쪽을 보도록 좌우로 뒤집어 그린다. 생략하면 뒤집지 않는다" },
+        "front": { "type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.png$", "description": "펫보다 앞에 그려지는 시트(sheet와 같은 frames/frameSize). sheet는 펫 뒤, front는 펫 앞에 그려져 펫이 문 안으로 걸어 들어가고 걸어 나온다. 생략하면 문 전체가 펫 뒤에 있다" },
+        "enter": { "type": "number", "minimum": 0, "maximum": 2048, "description": "front가 있을 때 펫이 가려질 때까지 anchor에서 안쪽으로 더 걸어가는 거리(프레임 픽셀)" }
       }
     },
     "effects": {
