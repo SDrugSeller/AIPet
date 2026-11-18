@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { validateSkin } from '../src/main/skinRoots.js';
 import { doorFrameAt } from '../src/shared/motion.js';
-import { resolveDoor, validateDoor } from '../src/shared/skinDoor.js';
+import { DOOR_PERCENT_MAX, DOOR_PERCENT_MIN, doorFactor, resolveDoor, validateDoor } from '../src/shared/skinDoor.js';
 
 const goodDoor = () => ({ sheet: 'door.png', frames: 10, openFrames: 6, frameSize: { w: 128, h: 128 }, anchor: { x: 64, y: 124 }, scale: 1 });
 
@@ -90,4 +90,17 @@ test('door.opening: left/right는 통과하고 환산 결과에 그대로 담기
   assert.equal(validateDoor({ ...goodDoor(), opening: 'right' }), null);
   assert.equal(resolveDoor({ door: { ...goodDoor(), opening: 'left' }, owner: 'a', factor: 1, pixelArt: false }).opening, 'left');
   assert.equal(resolveDoor({ door: goodDoor(), owner: 'a', factor: 1, pixelArt: false }).opening, null);
+});
+
+test('doorFactor: 펫 높이에 비례하고, 문 크기(%)가 문만 따로 키우고 줄인다', () => {
+  assert.equal(doorFactor({ petDisplayH: 128, ownerPetDisplayH: 128 }), 1, '조정 없음');
+  assert.equal(doorFactor({ petDisplayH: 128, ownerPetDisplayH: 128, percent: 100 }), 1);
+  assert.equal(doorFactor({ petDisplayH: 128, ownerPetDisplayH: 128, percent: 150 }), 1.5);
+  assert.equal(doorFactor({ petDisplayH: 128, ownerPetDisplayH: 128, percent: 50 }), 0.5);
+  assert.equal(doorFactor({ petDisplayH: 192, ownerPetDisplayH: 128 }), 1.5, '펫을 1.5배로 키우면 문도 1.5배');
+  assert.equal(doorFactor({ petDisplayH: 192, ownerPetDisplayH: 128, percent: 200 }), 3, '둘이 곱해진다');
+  assert.ok(DOOR_PERCENT_MIN < 100 && DOOR_PERCENT_MAX > 100);
+  // 화면 크기까지 이어서: 128px 펫, 128px 프레임 문, 150% → 192px
+  const r = resolveDoor({ door: goodDoor(), owner: 'a', factor: doorFactor({ petDisplayH: 128, ownerPetDisplayH: 128, percent: 150 }), pixelArt: false });
+  assert.deepEqual(r.display, { w: 192, h: 192 });
 });

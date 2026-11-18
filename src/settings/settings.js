@@ -2,6 +2,7 @@
 // 설정 창. 값이 바뀔 때마다 자동 저장한다. 화면에 표시되는 문자열은 모두 textContent/value로만 넣는다.
 
 import { KIND_IDS, KINDS, MAX_CONNECTIONS } from '../shared/connections.js';
+import { DOOR_PERCENT_DEFAULT, DOOR_PERCENT_MAX, DOOR_PERCENT_MIN, DOOR_PERCENT_SLIDER_MAX, doorFactor } from '../shared/skinDoor.js';
 import { applyTuning, checkSheets, detectFrameSize } from '../shared/skinTuning.js';
 import { SLEEP_AFTER_DEFAULT_SEC, wakeAwakeMs } from '../shared/sleep.js';
 
@@ -507,6 +508,45 @@ const tuneFields = () => ({
 /** 입력칸의 값을 숫자로 읽는다 (비었거나 숫자가 아니면 undefined) @param {HTMLInputElement} el */
 const numOf = (el) => (el.value !== '' && Number.isFinite(Number(el.value)) ? Math.round(Number(el.value)) : undefined);
 
+const doorRange = () => /** @type {HTMLInputElement} */ ($('#tuneDoorRange'));
+const doorPct = () => /** @type {HTMLInputElement} */ ($('#tuneDoorPct'));
+
+/** 문 크기(%)를 범위 안으로 맞춘다. 숫자가 아니면 기본값 @param {number | undefined} v */
+const clampDoorPct = (v) => (v === undefined ? DOOR_PERCENT_DEFAULT : Math.min(DOOR_PERCENT_MAX, Math.max(DOOR_PERCENT_MIN, v)));
+
+/** 문 크기가 화면에서 몇 픽셀이 되는지 보여 준다 (펫 크기 입력과 문 크기(%)를 함께 반영) */
+function previewDoor() {
+  const info = tuneData;
+  const door = info?.door;
+  const enabled = !!door;
+  doorRange().disabled = !enabled;
+  doorPct().disabled = !enabled;
+  if (!info || !door) {
+    $('#tuneDoorInfo').textContent = info ? '이 스킨과 기본 스킨 모두 문 그림이 없어서(코드로 그린 문을 써요) 크기를 조절할 수 없어요.' : '';
+    return;
+  }
+  const { fw, fh, dh } = tuneFields();
+  const pet = applyTuning(info.authored, { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) });
+  const pct = clampDoorPct(numOf(doorPct()));
+  const f = doorFactor({ petDisplayH: pet.displaySize.h, ownerPetDisplayH: door.ownerPetDisplayH, percent: pct });
+  const w = Math.round(door.frameSize.w * door.scale * f);
+  const h = Math.round(door.frameSize.h * door.scale * f);
+  $('#tuneDoorInfo').textContent =
+    `문 그림 크기: 화면에 ${w}×${h}px (펫 높이 ${Math.round(pet.displaySize.h)}px 기준)` +
+    (door.own ? '' : ' · 이 스킨에는 문 그림이 없어서 기본 스킨의 문을 써요');
+}
+
+/** 슬라이더와 숫자칸을 맞춘다. source: 방금 바뀐 쪽 @param {'range' | 'number'} source */
+function syncDoorInputs(source) {
+  if (source === 'range') {
+    doorPct().value = doorRange().value;
+  } else {
+    const v = numOf(doorPct());
+    if (v !== undefined) doorRange().value = String(Math.min(DOOR_PERCENT_SLIDER_MAX, clampDoorPct(v)));
+  }
+  previewDoor();
+}
+
 /** 입력한 값으로 환산 결과와 시트 문제를 보여 준다 */
 function previewTuning() {
   const info = tuneData;
@@ -520,6 +560,7 @@ function previewTuning() {
   $('#tuneProblems').textContent = problems.length
     ? `시트 크기가 입력한 프레임 크기와 맞지 않아요:\n${problems.slice(0, 6).join('\n')}${problems.length > 6 ? `\n… 외 ${problems.length - 6}건` : ''}`
     : '';
+  previewDoor(); // 펫 높이를 바꾸면 문도 같이 따라가므로 문 크기 미리보기도 갱신한다
 }
 
 /** 입력칸을 현재 저장된 값(없으면 원본 값)으로 채운다 */
@@ -534,6 +575,9 @@ function fillTuning() {
   fw.value = String(cur.frameW ?? a.frameSize.w);
   fh.value = String(cur.frameH ?? a.frameSize.h);
   dh.value = String(cur.displayH ?? Math.round(a.frameSize.h * a.scale));
+  const pct = cur.doorPercent ?? DOOR_PERCENT_DEFAULT;
+  doorPct().value = String(pct);
+  doorRange().value = String(Math.min(DOOR_PERCENT_SLIDER_MAX, pct));
   previewTuning();
 }
 
@@ -561,6 +605,8 @@ function renderTuning() {
 
 $('#tuneSkin').addEventListener('change', (e) => void loadTuning(/** @type {HTMLSelectElement} */ (e.target).value));
 for (const el of Object.values(tuneFields())) el.addEventListener('input', previewTuning);
+doorRange().addEventListener('input', () => syncDoorInputs('range'));
+doorPct().addEventListener('input', () => syncDoorInputs('number'));
 
 $('#tuneDetect').addEventListener('click', () => {
   const info = tuneData;
@@ -585,11 +631,14 @@ $('#tuneApply').addEventListener('click', async () => {
   const info = tuneData;
   if (!info) return;
   const { fw, fh, dh } = tuneFields();
-  const t = { frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) };
+  const t = /** @type {{ frameW?: number, frameH?: number, displayH?: number, doorPercent?: number }} */ ({ frameW: numOf(fw), frameH: numOf(fh), displayH: numOf(dh) });
   if (t.frameW === undefined || t.frameH === undefined || t.displayH === undefined) {
-    flashSaved('세 칸을 모두 숫자로 입력해 주세요');
+    flashSaved('프레임 너비·높이와 표시 높이 세 칸을 모두 숫자로 입력해 주세요');
     return;
   }
+  // 문 크기는 기본(100%)이 아닐 때만 저장한다. 범위를 벗어난 값은 범위 안으로 맞춘다.
+  const pct = clampDoorPct(numOf(doorPct()));
+  if (pct !== DOOR_PERCENT_DEFAULT) t.doorPercent = pct;
   if (checkSheets({ w: t.frameW, h: t.frameH }, info.sheets).length && !window.confirm('시트 크기와 맞지 않아 그림이 깨져 보일 수 있어요. 그래도 적용할까요?')) return;
   await save({ skinTuning: { ...state.settings.skinTuning, [info.id]: t } });
   await loadTuning(info.id); // 이 스킨을 쓰는 펫은 바로 새 크기로 다시 나타난다

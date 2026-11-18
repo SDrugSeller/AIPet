@@ -3,7 +3,7 @@ import { net, protocol } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolveDoor } from '../shared/skinDoor.js';
+import { doorFactor, resolveDoor } from '../shared/skinDoor.js';
 import { applyTuning } from '../shared/skinTuning.js';
 import { createSkinRoots, isInside, validateSkin } from './skinRoots.js';
 
@@ -70,9 +70,10 @@ export async function loadSkin(name, tuning) {
   if (raw.door) {
     const sheet = path.resolve(dir, String(raw.door.sheet));
     if (!isInside(dir, sheet)) throw new Error('skin.json: door 시트 경로가 스킨 폴더를 벗어납니다');
-    door = resolveDoor({ door: raw.door, owner: name, factor: t.displaySize.h / (raw.frameSize.h * (raw.scale ?? 1)), pixelArt: raw.pixelArt ?? false });
+    const factor = doorFactor({ petDisplayH: t.displaySize.h, ownerPetDisplayH: raw.frameSize.h * (raw.scale ?? 1), percent: tuning?.doorPercent });
+    door = resolveDoor({ door: raw.door, owner: name, factor, pixelArt: raw.pixelArt ?? false });
   } else if (name !== DEFAULT_SKIN) {
-    door = await borrowedDoor(t.displaySize.h);
+    door = await borrowedDoor(t.displaySize.h, tuning?.doorPercent);
   }
 
   return {
@@ -91,16 +92,42 @@ export async function loadSkin(name, tuning) {
   };
 }
 
-/** 문이 없는 스킨이 빌려 쓰는 기본 스킨의 문 @param {number} petDisplayH 이 펫이 화면에서 차지하는 높이(px) */
-async function borrowedDoor(petDisplayH) {
+/** 문이 없는 스킨이 빌려 쓰는 기본 스킨의 문 @param {number} petDisplayH 이 펫이 화면에서 차지하는 높이(px) @param {number} [percent] 문 크기(%) */
+async function borrowedDoor(petDisplayH, percent) {
   try {
     const def = roots.resolve(DEFAULT_SKIN);
     if (!def || def.source !== 'bundled') return null; // 앱에 들어 있는 기본 스킨만 믿는다
     const raw = JSON.parse(await fs.readFile(path.join(def.dir, 'skin.json'), 'utf8'));
     if (!raw.door) return null;
-    return resolveDoor({ door: raw.door, owner: DEFAULT_SKIN, factor: petDisplayH / (raw.frameSize.h * (raw.scale ?? 1)), pixelArt: raw.pixelArt ?? false });
+    const factor = doorFactor({ petDisplayH, ownerPetDisplayH: raw.frameSize.h * (raw.scale ?? 1), percent });
+    return resolveDoor({ door: raw.door, owner: DEFAULT_SKIN, factor, pixelArt: raw.pixelArt ?? false });
   } catch {
     return null; // 문 그림이 없어도 펫은 동작한다 (코드로 그린 문을 쓴다)
+  }
+}
+
+/**
+ * 설정 창이 문 크기를 미리 계산하는 데 필요한 값: 쓰게 될 문(자기 것, 없으면 기본 스킨의 것)의 프레임 크기와 배율,
+ * 그 문이 만들어질 때의 펫 높이. 문이 아예 없으면 null.
+ * @param {string} name @param {any} raw
+ */
+async function doorInfo(name, raw) {
+  /** @param {any} r */
+  const info = (r, /** @type {boolean} */ own) => ({
+    own,
+    frameSize: r.door.frameSize,
+    scale: r.door.scale ?? 1,
+    ownerPetDisplayH: r.frameSize.h * (r.scale ?? 1),
+  });
+  if (raw.door) return info(raw, true);
+  if (name === DEFAULT_SKIN) return null;
+  try {
+    const def = roots.resolve(DEFAULT_SKIN);
+    if (!def || def.source !== 'bundled') return null;
+    const d = JSON.parse(await fs.readFile(path.join(def.dir, 'skin.json'), 'utf8'));
+    return d.door ? info(d, false) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -141,6 +168,7 @@ export async function inspectSkin(name) {
     }
     return {
       id: name,
+      door: await doorInfo(name, raw),
       authored: {
         frameSize: raw.frameSize,
         scale: raw.scale ?? 1,

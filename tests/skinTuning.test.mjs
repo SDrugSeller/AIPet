@@ -122,3 +122,17 @@ test('실제 스킨들: 아무 조정도 하지 않으면 스킨의 시트 크�
     }
   }
 });
+
+test('저장소: 문 크기(doorPercent)는 25~400의 정수만 저장하고 다시 열어도 유지된다', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'aipet-door-')), 'settings.json');
+  const safe = /** @type {any} */ ({ isEncryptionAvailable: () => true, encryptString: (/** @type {string} */ s) => Buffer.from(s), decryptString: (/** @type {Buffer} */ b) => b.toString() });
+  const s = createStore({ file, safeStorage: safe });
+  const good = { 'genba-cat': { frameW: 256, frameH: 256, displayH: 128, doorPercent: 150 }, 'genba-cat-gif': { doorPercent: 25 }, default: { doorPercent: 400 } };
+  s.update({ skinTuning: good });
+  assert.deepEqual(s.get().skinTuning, good);
+  assert.deepEqual(createStore({ file, safeStorage: safe }).get().skinTuning, good);
+  for (const bad of [{ a: { doorPercent: 24 } }, { a: { doorPercent: 401 } }, { a: { doorPercent: 99.5 } }, { a: { doorPercent: '150' } }, { a: { doorPercent: null } }]) {
+    s.update({ skinTuning: bad });
+    assert.deepEqual(s.get().skinTuning, good, JSON.stringify(bad));
+  }
+});

@@ -3,6 +3,7 @@
 // API 키 같은 비밀은 OS 키체인(Electron safeStorage)으로 암호화해서 저장하며, 렌더러에는 절대 보내지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { DOOR_PERCENT_MAX, DOOR_PERCENT_MIN } from '../shared/skinDoor.js';
 import { SLEEP_SPOT_DEFAULT, SLEEP_SPOT_MODES } from './sleepSpot.js';
 import { SLEEP_AFTER_DEFAULT_SEC, SLEEP_AFTER_MAX_SEC, SLEEP_AFTER_MIN_SEC } from '../shared/sleep.js';
 import { isValidConnection, keySecretName, newConnection, validateConnections } from '../shared/connections.js';
@@ -74,7 +75,7 @@ export const DEFAULTS = {
     reminders: /** @type {{ time: string, text: string, enabled: boolean }[]} */ ([]),
   },
   /** 스킨별 크기 조정값 (스킨 폴더 이름 → 프레임 크기/표시 높이). 비어 있으면 skin.json 그대로 */
-  skinTuning: /** @type {Record<string, { frameW?: number, frameH?: number, displayH?: number }>} */ ({}),
+  skinTuning: /** @type {Record<string, { frameW?: number, frameH?: number, displayH?: number, doorPercent?: number }>} */ ({}),
   general: {
     launchAtLogin: false,
     /** 방해 금지: 먼저 말을 걸지 않고 알림 말풍선도 띄우지 않는다 */
@@ -126,6 +127,7 @@ const skinTuning = (v) =>
       Object.entries(t).every(([k, n]) => {
         if (k === 'frameW' || k === 'frameH') return int(8, 2048)(n);
         if (k === 'displayH') return int(16, 1024)(n);
+        if (k === 'doorPercent') return int(DOOR_PERCENT_MIN, DOOR_PERCENT_MAX)(n);
         return false; // 모르는 항목은 거부
       }),
   );

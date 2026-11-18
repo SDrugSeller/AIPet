@@ -9,8 +9,9 @@
 /**
  * @typedef {{ frameSize: { w: number, h: number }, scale: number,
  *   anchor: { x: number, y: number }, hitbox?: { x: number, y: number, w: number, h: number } }} AuthoredSkin
- * @typedef {{ frameW?: number, frameH?: number, displayH?: number }} Tuning
- *   frameW/frameH: 시트에서 한 프레임의 실제 크기(px), displayH: 화면에 표시할 프레임 높이(px)
+ * @typedef {{ frameW?: number, frameH?: number, displayH?: number, doorPercent?: number }} Tuning
+ *   frameW/frameH: 시트에서 한 프레임의 실제 크기(px), displayH: 화면에 표시할 프레임 높이(px),
+ *   doorPercent: 펫이 모니터를 오갈 때 나오는 문의 크기(기본 크기에 대한 %). 펫 크기 환산(applyTuning)과는 별개다
  */
 
 /** @param {number} n */

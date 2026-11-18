@@ -271,6 +271,15 @@ input[type='password']:focus {
   margin-top: 0 !important;
 }
 
+/* 문 크기: 슬라이더는 넓게, 숫자칸은 좁게 */
+.inline.doorsize input[type='range'] {
+  flex: 1 1 auto;
+}
+
+.inline.doorsize input[type='number'] {
+  flex: 0 0 5.5em;
+}
+
 button {
   padding: 6px 12px;
   font: inherit;

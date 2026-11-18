@@ -159,7 +159,7 @@
         <section id="tuneSection">
           <h2>스킨 크기</h2>
           <p class="hint">
-            시트(PNG)의 한 칸(프레임)이 몇 픽셀인지와, 화면에서 펫이 몇 픽셀 높이로 보일지를 정해요.
+            시트(PNG)의 한 칸(프레임)이 몇 픽셀인지와, 화면에서 펫이 몇 픽셀 높이로 보일지, 모니터를 오갈 때 나오는 문이 얼마나 클지를 정해요.
             이 값에 맞춰 <strong>크기, 발 위치(앵커), 클릭 영역(히트박스)이 자동으로 조절돼요.</strong>
             다른 해상도의 그림으로 바꿨을 때 써 보세요. 스킨 자체는 "연결" 탭에서 캐릭터마다 골라요.
           </p>
@@ -180,6 +180,14 @@
           </div>
           <p class="muted" id="tuneResult"></p>
           <p class="reason" id="tuneProblems"></p>
+          <label class="field">문 크기 (%)
+            <span class="muted">(펫이 모니터를 오갈 때 나오는 문. 100%가 기본 크기이고, 펫 크기를 바꾸면 같이 따라가요)</span>
+            <div class="inline doorsize">
+              <input type="range" id="tuneDoorRange" min="25" max="300" step="5" aria-label="문 크기 슬라이더" />
+              <input type="number" id="tuneDoorPct" min="25" max="400" aria-label="문 크기 퍼센트" />
+            </div>
+          </label>
+          <p class="muted" id="tuneDoorInfo"></p>
           <div class="inline">
             <button type="button" id="tuneDetect">시트에서 자동 감지</button>
             <button type="button" id="tuneApply">적용</button>

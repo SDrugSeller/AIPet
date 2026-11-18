@@ -12,6 +12,22 @@
 
 const SHEET_PATH = /^[A-Za-z0-9_./-]+\.png$/;
 
+/** 문 크기 조절(설정 → 펫 → 스킨 크기): 기본 크기에 대한 퍼센트. 슬라이더는 SLIDER_MAX까지, 직접 입력은 MAX까지 */
+export const DOOR_PERCENT_MIN = 25;
+export const DOOR_PERCENT_MAX = 400;
+export const DOOR_PERCENT_SLIDER_MAX = 300;
+export const DOOR_PERCENT_DEFAULT = 100;
+
+/**
+ * 문 그림의 배율 보정: 문이 만들어질 때의 펫 높이 대비 지금 펫 높이의 비율에, 사용자가 정한 문 크기(%)를 곱한다.
+ * 펫 크기를 바꾸면 문도 같은 비율로 따라가고, 문 크기(%)로 문만 따로 키우고 줄일 수 있다.
+ * @param {{ petDisplayH: number, ownerPetDisplayH: number, percent?: number }} p
+ *   petDisplayH: 지금 펫이 화면에서 차지하는 높이(px), ownerPetDisplayH: 문 그림을 만든 스킨의 펫 높이(px), percent: 문 크기(%)
+ */
+export function doorFactor({ petDisplayH, ownerPetDisplayH, percent }) {
+  return (petDisplayH / ownerPetDisplayH) * ((percent ?? DOOR_PERCENT_DEFAULT) / 100);
+}
+
 /** @param {unknown} v @param {number} min @param {number} max */
 const isNum = (v, min, max) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
