@@ -158,6 +158,9 @@ function topPetAt(x, y) {
 /** @type {{ x: number, y: number, w: number, h: number }[]} */
 let lastRects = [];
 let lastKey = '';
+/** 앞 레이어가 있는 문을 쓰는 펫을 오려서 그리는 작업용 캔버스 */
+const scratch = document.createElement('canvas');
+const scratchCtx = /** @type {CanvasRenderingContext2D} */ (scratch.getContext('2d'));
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -216,9 +219,10 @@ function drawDoor(d, open) {
  * 프레임이 한 장뿐인 시트(토관처럼 열고 닫는 그림이 없는 문)는 갑자기 나타나고 사라지지 않게 서서히 보였다 사라진다.
  * @param {Pet} p @param {{ x: number, y: number }} door 문이 서 있는 자리(바닥 가운데, 전역 좌표) @param {number} frame @param {number} open 열린 정도 0~1
  * @param {HTMLImageElement} [sheet] 그릴 시트 (생략하면 펫 뒤에 그리는 문 시트, 앞 레이어는 doorFront를 넘긴다)
+ * @param {CanvasRenderingContext2D} [c] 그릴 곳 (생략하면 화면)
  * @returns {{ x: number, y: number, w: number, h: number }} 지울 영역
  */
-function drawDoorSprite(p, door, frame, open, sheet = /** @type {HTMLImageElement} */ (p.doorSheet)) {
+function drawDoorSprite(p, door, frame, open, sheet = /** @type {HTMLImageElement} */ (p.doorSheet), c = ctx) {
   const spec = p.skin.door;
   const { w: fw, h: fh } = spec.frameSize;
   const w = fw * spec.scale;
@@ -227,18 +231,18 @@ function drawDoorSprite(p, door, frame, open, sheet = /** @type {HTMLImageElemen
   const flip = !!spec.opening && !!door.mouth && spec.opening !== door.mouth;
   const x = door.x - origin.x - (flip ? fw - spec.anchor.x : spec.anchor.x) * spec.scale;
   const y = door.y - origin.y - spec.anchor.y * spec.scale;
-  ctx.save();
-  if (spec.frames === 1) ctx.globalAlpha = Math.min(1, open * 1.6);
-  ctx.imageSmoothingEnabled = !spec.pixelArt;
-  ctx.imageSmoothingQuality = 'high';
+  c.save();
+  if (spec.frames === 1) c.globalAlpha = Math.min(1, open * 1.6);
+  c.imageSmoothingEnabled = !spec.pixelArt;
+  c.imageSmoothingQuality = 'high';
   if (flip) {
-    ctx.translate(x + w, y);
-    ctx.scale(-1, 1);
-    ctx.drawImage(sheet, frame * fw, 0, fw, fh, 0, 0, w, h);
+    c.translate(x + w, y);
+    c.scale(-1, 1);
+    c.drawImage(sheet, frame * fw, 0, fw, fh, 0, 0, w, h);
   } else {
-    ctx.drawImage(sheet, frame * fw, 0, fw, fh, x, y, w, h);
+    c.drawImage(sheet, frame * fw, 0, fw, fh, x, y, w, h);
   }
-  ctx.restore();
+  c.restore();
   return { x, y, w, h };
 }
 
@@ -279,42 +283,76 @@ function render(now) {
   // 문은 펫 뒤에 그린다 (펫이 문 앞으로 걸어가 안으로 사라지고, 문 앞에 나타난다)
   for (const { p, door, open, frame } of doors) lastRects.push(frame !== null ? drawDoorSprite(p, door, frame, open) : drawDoor(door, open));
 
-  for (const { p, pos, anim, frame, flip, alpha } of items) {
+  // 앞 레이어가 있는 문(토관의 몸통 등)은 그 문을 쓰는 펫만 가린다. 앞 레이어는 모든 펫 아래에 문의 일부로 그려 두고,
+  // 그 펫만 자기 문의 앞 레이어 모양으로 오려서 그린다 (다른 펫은 어느 문의 앞·뒤 레이어에도 가려지지 않는다).
+  /** @type {Map<string, { door: any, frame: number, open: number }>} */
+  const frontOf = new Map();
+  for (const { p, door, frame, open } of doors) {
+    if (frame === null || !p.doorFront) continue;
+    frontOf.set(p.id, { door, frame, open });
+    lastRects.push(drawDoorSprite(p, door, frame, open, p.doorFront));
+  }
+
+  for (const item of items) {
+    const { p, pos, anim, frame, flip, alpha } = item;
     const { sprite: r, hit } = petRects(p, pos);
     lastRects.push(r);
-    ctx.globalAlpha = alpha;
-    const sheet = anim ? p.sheets?.get(anim) : null;
-    if (sheet) {
-      const { w: fw, h: fh } = p.skin.frameSize;
-      ctx.imageSmoothingEnabled = !p.skin.pixelArt; // 일러스트는 부드럽게, 도트는 선명하게
-      ctx.imageSmoothingQuality = 'high';
-      ctx.save();
-      if (flip) {
-        ctx.translate(r.x + r.w, r.y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(sheet, frame * fw, 0, fw, fh, 0, 0, r.w, r.h);
+    const front = frontOf.get(p.id);
+    if (front && p.doorFront) {
+      // 펫을 작업용 캔버스에 그리고 자기 문의 앞 레이어만큼 지운 뒤 화면에 올린다
+      const dpr = window.devicePixelRatio || 1;
+      const ox = Math.floor(r.x * dpr) / dpr - 1;
+      const oy = Math.floor(r.y * dpr) / dpr - 1;
+      const w = Math.ceil((r.w + 3) * dpr);
+      const h = Math.ceil((r.h + 3) * dpr);
+      if (scratch.width !== w || scratch.height !== h) {
+        scratch.width = w;
+        scratch.height = h;
       } else {
-        ctx.drawImage(sheet, frame * fw, 0, fw, fh, r.x, r.y, r.w, r.h);
+        scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+        scratchCtx.clearRect(0, 0, w, h);
       }
-      ctx.restore();
-    } else if (p.sheets) {
-      // 에셋이 전혀 없을 때의 임시 펫
-      ctx.fillStyle = '#ffb585';
-      ctx.beginPath();
-      ctx.roundRect(hit.x, hit.y, hit.w, hit.h, hit.w / 2.5);
-      ctx.fill();
+      scratchCtx.setTransform(dpr, 0, 0, dpr, -ox * dpr, -oy * dpr);
+      paintPet(scratchCtx, p, r, hit, anim, frame, flip, alpha);
+      scratchCtx.globalCompositeOperation = 'destination-out';
+      drawDoorSprite(p, front.door, front.frame, front.open, p.doorFront, scratchCtx);
+      scratchCtx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(scratch, ox, oy, w / dpr, h / dpr);
+    } else {
+      paintPet(ctx, p, r, hit, anim, frame, flip, alpha);
     }
-    ctx.globalAlpha = 1;
     if (debug) {
       ctx.strokeStyle = interactive ? '#00d26a' : '#ff3b30';
       ctx.strokeRect(hit.x, hit.y, hit.w, hit.h);
     }
   }
+}
 
-  // 앞 레이어가 있는 문(토관의 몸통 등)은 펫 위에 그린다: 펫이 입구 가장자리를 넘어 안으로 들어가면 이 그림에 가려진다
-  for (const { p, door, frame } of doors) {
-    if (frame !== null && p.doorFront) lastRects.push(drawDoorSprite(p, door, frame, doorOpenness(door, now), p.doorFront));
+/** 펫 한 마리를 c에 그린다 @param {CanvasRenderingContext2D} c @param {Pet} p @param {{ x: number, y: number, w: number, h: number }} r 스프라이트 영역 @param {{ x: number, y: number, w: number, h: number }} hit @param {string | null} anim @param {number} frame @param {boolean} flip @param {number} alpha */
+function paintPet(c, p, r, hit, anim, frame, flip, alpha) {
+  c.globalAlpha = alpha;
+  const sheet = anim ? p.sheets?.get(anim) : null;
+  if (sheet) {
+    const { w: fw, h: fh } = p.skin.frameSize;
+    c.imageSmoothingEnabled = !p.skin.pixelArt; // 일러스트는 부드럽게, 도트는 선명하게
+    c.imageSmoothingQuality = 'high';
+    c.save();
+    if (flip) {
+      c.translate(r.x + r.w, r.y);
+      c.scale(-1, 1);
+      c.drawImage(sheet, frame * fw, 0, fw, fh, 0, 0, r.w, r.h);
+    } else {
+      c.drawImage(sheet, frame * fw, 0, fw, fh, r.x, r.y, r.w, r.h);
+    }
+    c.restore();
+  } else if (p.sheets) {
+    // 에셋이 전혀 없을 때의 임시 펫
+    c.fillStyle = '#ffb585';
+    c.beginPath();
+    c.roundRect(hit.x, hit.y, hit.w, hit.h, hit.w / 2.5);
+    c.fill();
   }
+  c.globalAlpha = 1;
 }
 
 /** @param {boolean} value */
