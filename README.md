@@ -28,7 +28,7 @@ npm run dist:debug   # 디버그판만:   dist/debug/AIPet-Setup-<버전>-debug.
 - **디버그판**은 일반판과 같은 코드에 동작 로그 파일만 켠 설치 파일입니다(같은 앱이라 일반판 위에 덮어 설치할 수 있고, 설정·스킨도 그대로 씁니다). 로그는 `%APPDATA%\AIPet\logs\aipet.log`(1MB를 넘으면 `aipet.1.log`로 넘기므로 최대 약 2MB)에 쌓이고, 펫 우클릭/트레이 메뉴의 **"동작 로그 폴더 열기 (디버그 빌드)"**로 폴더를 열 수 있습니다. 일반판은 로그를 남기지 않습니다.
 - 로그에는 시작 정보(버전, 모니터 구성·배율), 펫 모션 변화, 포커스 이동, 드래그의 시작·끝과 이상 상황, 활성 창의 **프로세스 이름과 위치**, AI 연결 점검·질문 보냄·응답 끝·오류·도구 요청의 허용/거부가 남습니다. **대화 내용과 도구 입력(명령, 파일 내용)은 남기지 않습니다.** 같은 줄은 한 번만 쓰고 1초에 40줄을 넘기면 버립니다. 로그를 남에게 보내기 전에 활성 창 이름이 들어 있다는 점을 알아 두세요.
 
-- 설치본에는 `src/`, `personas/`, `skins/default`만 들어가며 개인용 스킨(`skins/genba-cat`)은 제외됩니다.
+- 설치본에는 `src/`, `personas/`, `skins/default`, `skins/claude-crab`, `skins/gemini-mopi`만 들어가며 개인용 스킨(`skins/genba-cat`)은 제외됩니다.
 - 코드 서명이 없어서 다른 PC에서 SmartScreen 경고가 뜰 수 있습니다. 앱 아이콘은 임시입니다(`build/icon.png`).
 - 셸에 `ELECTRON_RUN_AS_NODE=1`이 설정돼 있으면(VS Code 터미널 등) `npm start`와 빌드가 실패하므로 해제하고 실행하세요.
 
@@ -101,6 +101,8 @@ npm run dist:debug   # 디버그판만:   dist/debug/AIPet-Setup-<버전>-debug.
   - 스킨은 `skin.json`과 PNG만 읽으며 코드는 실행되지 않습니다. 외부에서 받은 스킨은 값의 범위(프레임 크기, 프레임 수, fps, 시트 경로)를 검사하고, 맞지 않으면 목록에 나타나지 않습니다. 이미 쓰는 스킨을 고쳤다면 앱을 다시 시작해야 반영됩니다.
   - 받은 스킨의 그림은 만든 사람에게 권리가 있습니다. 출처와 이용 조건을 확인하고 쓰세요.
 - `default`: 임시 콩 캐릭터 (`node tools/gen-placeholder-skin.mjs`로 생성).
+- `claude-crab`: Claude 연결용 도트 게 캐릭터(32×32, 작가 Claude, CC0). 설치본에 함께 들어갑니다.
+- `gemini-mopi`: Gemini 연결용 도트 캐릭터(56×56, 팬 제작). 설치본에 함께 들어갑니다.
 
 - `genba-cat`: **개인용이며 저장소에 포함되지 않습니다**(`.gitignore`, 커밋 기록에서도 제거). 직접 쓰려면 `skins/genba-cat/source.webp`에 원본 이미지를 두고 `tools/genba`로 만듭니다. 패키징/배포 때도 제외해야 합니다. 웹의 밈 캐릭터 "현장냥이(現場猫)" 이미지 **한 장**(`skins/genba-cat/source.webp`)에서 만든 스킨입니다.
   - 배경을 지우고, 몸을 격자 메시로 덮어 관절(머리, 팔, 다리, 꼬리, 입, 눈)만 휘게 해서 idle/walk/drag/drop/sleep/think/work/talk/done/error/attention 시트를 만듭니다. 새 포즈를 그린 것이 아니라 한 장을 변형한 것이라 움직임은 단순합니다.

@@ -1,0 +1,152 @@
+{
+  "$schema": "../skin.schema.json",
+  "schemaVersion": 1,
+  "name": "클로드",
+  "author": "Claude",
+  "license": "CC0",
+  "frameSize": {
+    "w": 32,
+    "h": 32
+  },
+  "scale": 5,
+  "facing": "left",
+  "pixelArt": true,
+  "flippable": true,
+  "anchor": {
+    "x": 16,
+    "y": 29
+  },
+  "hitbox": {
+    "x": 3,
+    "y": 12,
+    "w": 26,
+    "h": 17
+  },
+  "animations": {
+    "idle": {
+      "sheet": "idle.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "walk": {
+      "sheet": "walk.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "moveSpeed": 60
+    },
+    "drag": {
+      "sheet": "drag.png",
+      "frames": 3,
+      "fps": 6,
+      "loop": true
+    },
+    "drop": {
+      "sheet": "drop.png",
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "next": "idle"
+    },
+    "sleep": {
+      "sheet": "sleep.png",
+      "frames": 4,
+      "fps": 3,
+      "loop": true
+    },
+    "think": {
+      "sheet": "think.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "work": {
+      "sheet": "work.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "talk": {
+      "sheet": "talk.png",
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "done": {
+      "sheet": "done.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "next": "idle"
+    },
+    "attention": {
+      "sheet": "attention.png",
+      "frames": 6,
+      "fps": 8,
+      "loop": true
+    },
+    "error": {
+      "sheet": "error.png",
+      "frames": 6,
+      "fps": 8,
+      "loop": false,
+      "next": "idle"
+    },
+    "react": {
+      "sheet": "react.png",
+      "frames": 5,
+      "fps": 10,
+      "loop": false,
+      "next": "idle"
+    },
+    "yawn": {
+      "sheet": "yawn.png",
+      "frames": 6,
+      "fps": 8,
+      "loop": false,
+      "next": "idle"
+    },
+    "look_around": {
+      "sheet": "look_around.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": false,
+      "next": "idle"
+    }
+  },
+  "fallbacks": {
+    "talk": "think",
+    "attention": "think",
+    "error": "think",
+    "react": "done",
+    "drop": "idle",
+    "fall": "drag",
+    "run": "walk",
+    "sit": "idle"
+  },
+  "randomActions": [
+    {
+      "anim": "yawn",
+      "weight": 3,
+      "cooldownSec": 120
+    },
+    {
+      "anim": "look_around",
+      "weight": 4,
+      "cooldownSec": 60
+    }
+  ],
+  "effects": {
+    "exclaim": {
+      "sheet": "fx_exclaim.png",
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "offset": {
+        "x": 0,
+        "y": -23
+      }
+    }
+  }
+}
