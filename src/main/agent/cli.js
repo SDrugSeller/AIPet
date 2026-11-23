@@ -1,6 +1,6 @@
 // @ts-check
 // CLI 어댑터들이 함께 쓰는 도구: 실행 파일 찾기, 서브프로세스 실행/종료, 짧은 명령 실행.
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -31,6 +31,59 @@ export function findOnPath(name, env = process.env) {
     }
   }
   return null;
+}
+
+/** Microsoft Store(MSIX) 앱의 설치 정보가 있는 레지스트리 키 (현재 사용자 기준, 관리자 권한이 필요 없다) */
+const STORE_PACKAGES_KEY = String.raw`HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages`;
+
+/** reg.exe를 실행해 출력을 돌려준다. 실패하면 빈 문자열. @param {string[]} args */
+function regQuery(args) {
+  try {
+    return execFileSync('reg', args, { encoding: 'utf8', windowsHide: true, timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return '';
+  }
+}
+
+/** "26.1111.9664.0" 같은 버전을 숫자로 비교한다 (새 버전이 앞) @param {string} a @param {string} b */
+function compareVersionsDesc(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pb[i] || 0) - (pa[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+/**
+ * Microsoft Store로 설치한 앱의 폴더들을 새 버전부터 돌려준다. Store 앱은 PATH에 등록되지 않고 WindowsApps 폴더는
+ * 목록을 볼 수 없어서, 레지스트리의 패키지 목록에서 찾는다. 다른 OS이거나 설치되어 있지 않으면 빈 배열.
+ * @param {string} name 패키지 이름 (예: 'OpenAI.Codex')
+ * @param {{ reg?: (args: string[]) => string, platform?: string, arch?: string }} [opts] 테스트에서 바꿔 끼운다
+ * @returns {string[]}
+ */
+export function findStoreAppDirs(name, { reg = regQuery, platform = process.platform, arch = process.arch } = {}) {
+  if (platform !== 'win32' || !/^[A-Za-z0-9.]+$/.test(name)) return [];
+  const listing = reg(['query', STORE_PACKAGES_KEY, '/f', `${name}_`, '/k']);
+  /** @type {{ full: string, version: string, rank: number }[]} */
+  const found = [];
+  for (const line of listing.split(/\r?\n/)) {
+    // 이름_버전_아키텍처_리소스_게시자해시 (예: OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0)
+    const m = line.trim().match(/[\\/]((?:[A-Za-z0-9.]+)_(\d+(?:\.\d+)*)_(\w+)_[^_\\/\s]*_[A-Za-z0-9]+)$/);
+    if (!m || !m[1].startsWith(`${name}_`)) continue;
+    const want = arch === 'arm64' ? 'arm64' : 'x64';
+    found.push({ full: m[1], version: m[2], rank: m[3] === want ? 0 : m[3] === 'neutral' ? 1 : 2 });
+  }
+  found.sort((a, b) => a.rank - b.rank || compareVersionsDesc(a.version, b.version));
+  /** @type {string[]} */
+  const dirs = [];
+  for (const { full } of found) {
+    const v = reg(['query', `${STORE_PACKAGES_KEY}\\${full}`, '/v', 'PackageRootFolder']);
+    const root = v.match(/PackageRootFolder\s+REG_SZ\s+(.+?)\s*$/m)?.[1];
+    if (root) dirs.push(root);
+  }
+  return dirs;
 }
 
 /** cmd.exe용 인자 인용 (.cmd 셔임 실행 시에만 사용) @param {string} s */

@@ -6,6 +6,12 @@
 
 [docs/DESIGN.md](docs/DESIGN.md) 12장 참고: ① 첫 실행 안내(마법사·단계 안내·자동 감지), ② API 연결의 도구 루프, ③ (보류) Antigravity CLI 연결 — 착수 전 확인 항목은 12장 4번에 정리해 두었습니다. 배포 전에는 코드 서명과 제공사 약관 확인이 남아 있습니다.
 
+## 2026-11-23 — 0.1.12: Codex 데스크톱(Microsoft Store 앱) 자동 인식
+
+- Codex 데스크톱 앱만 설치한 PC에서 앱이 `codex`를 못 찾던 문제를 고쳤습니다. `PATH`와 npm 전역 폴더에서 못 찾으면 레지스트리의 Microsoft Store 패키지 목록(`OpenAI.Codex_*`)에서 설치 폴더를 읽어 `app\resources\codex.exe`를 씁니다. 새 버전부터 보고, 업데이트로 경로가 바뀌어도 다시 찾습니다. 관리자 권한이 필요 없고 조회는 십수 ms입니다. (Store 앱은 `PATH`에 등록되지 않고 `WindowsApps` 폴더는 목록을 볼 수 없어서 사용자가 경로를 알아내기도 어려웠습니다.)
+- "못 찾음" 안내에 Codex 데스크톱 앱 설치도 방법으로 적었습니다.
+- 테스트 5개 추가(전체 317개 통과). 이 PC에서 `PATH`와 npm 폴더에서 codex를 빼고 실제로 `detect`와 대화(`codex-cli 0.169.1`)가 Store 앱의 `codex.exe`로 되는 것을 확인했습니다.
+
 ## 2026-11-20 — 0.1.11: Claude·Gemini 스킨을 설치본에 기본 포함
 
 - `skins/claude-crab`(Claude용 도트 게, CC0)과 `skins/gemini-mopi`(Gemini용 도트 캐릭터, 팬 제작)를 저장소와 설치본에 함께 넣었습니다. 설치 직후 각 연결 카드의 스킨 목록에서 바로 고를 수 있습니다. (같은 이름의 사용자 스킨 폴더가 있으면 앱 내장 쪽이 우선합니다.)

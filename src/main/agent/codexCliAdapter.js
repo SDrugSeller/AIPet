@@ -12,7 +12,28 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
-import { cleanEnv, composePrompt, findOnPath, isFile, isWin, killTree, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+
+/** Codex Desktop(Microsoft Store 앱)이 안에 넣어 둔 codex.exe의 패키지 안 위치 (로그인은 CLI와 같은 ~/.codex를 쓴다) */
+const STORE_CODEX_EXE = ['app', 'resources', 'codex.exe'];
+
+/** 마지막으로 찾은 Store 앱의 codex.exe (레지스트리 조회를 매번 하지 않으려는 캐시. 업데이트로 사라지면 다시 찾는다) @type {string | null} */
+let storeCodexCache = null;
+
+/**
+ * Codex Desktop(Microsoft Store)의 codex.exe를 찾는다. 가장 새 버전부터 본다.
+ * @param {(name: string) => string[]} [dirs] 패키지 폴더 조회 (테스트에서 바꿔 끼운다)
+ * @returns {string | null}
+ */
+export function findStoreCodex(dirs = findStoreAppDirs) {
+  if (storeCodexCache && isFile(storeCodexCache)) return storeCodexCache;
+  storeCodexCache = null;
+  for (const dir of dirs('OpenAI.Codex')) {
+    const p = path.join(dir, ...STORE_CODEX_EXE);
+    if (isFile(p)) return (storeCodexCache = p);
+  }
+  return null;
+}
 
 /** @param {string} [override] 설정에서 지정한 경로. 지정했는데 없으면 null @returns {string | null} */
 export function findCodexBinary(override = '') {
@@ -25,7 +46,8 @@ export function findCodexBinary(override = '') {
     const p = path.join(npmDir, name);
     if (isFile(p)) return p;
   }
-  return null;
+  // Codex Desktop(Microsoft Store 앱)만 설치한 경우: 앱 안의 codex.exe를 쓴다
+  return isWin ? findStoreCodex() : null;
 }
 
 /** Windows에서 Codex가 명령 앞에 붙이는 PowerShell 실행 부분을 떼고, 한 줄로 줄여 보여 준다. @param {unknown} cmd */
@@ -137,7 +159,7 @@ export function createCodexCliAdapter({ getConfig }) {
           ok: false,
           reason: cfg.path
             ? '지정한 경로에서 codex를 찾을 수 없어요. 설정에서 경로를 확인해 주세요.'
-            : 'codex CLI를 찾을 수 없어요. 설치(npm i -g @openai/codex) 후 터미널에서 codex login으로 로그인해 주세요.',
+            : 'codex CLI를 찾을 수 없어요. 설치(npm i -g @openai/codex)하거나 Codex 데스크톱 앱(Microsoft Store)을 설치한 뒤, 로그인해 주세요(터미널에서 codex login).',
         };
       }
       const v = await run(bin, ['--version'], 20000);
