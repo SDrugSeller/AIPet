@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findCodexBinary } from './agent/codexCliAdapter.js';
 import { createConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { buildMenuTemplate } from './menu.js';
@@ -11,6 +12,8 @@ import { createPersonaStore } from './personas.js';
 import { createSettingsWindow } from './settingsWindow.js';
 import { configureSkinRoots, loadSkin, registerSkinProtocol, SKIN_SCHEME, skinSheetPath } from './skin.js';
 import { createStore } from './store.js';
+import { configureToolsDir } from './tools/toolPaths.js';
+import { createToolSetup } from './tools/toolSetup.js';
 import { createTray } from './tray.js';
 import { createOverlayManager } from './windows.js';
 
@@ -76,6 +79,17 @@ if (!app.requestSingleInstanceLock()) {
     /** @type {ReturnType<typeof createSettingsWindow>} */
     let settings;
 
+    // 앱이 대신 설치하는 도구(전용 Node.js, Codex)는 이 폴더 아래에만 둔다. 지우면 깨끗이 사라진다.
+    const toolsRoot = path.join(userData, 'tools');
+    configureToolsDir(toolsRoot);
+    const tools = createToolSetup({
+      root: toolsRoot,
+      refresh: (id) => (id ? manager.refresh(id) : manager.refreshAll()),
+      findBin: (id) => findCodexBinary(config.codex(id).path),
+      openExternal: (url) => void shell.openExternal(url),
+      onFinish: (r) => manager.notifySetupResult(r),
+    });
+
     // 트레이와 펫 우클릭이 같은 메뉴를 쓴다. manager/settings는 아래에서 만들어진 뒤에 호출된다.
     /** @param {string} [petId] */
     const getMenuTemplate = (petId) =>
@@ -109,6 +123,7 @@ if (!app.requestSingleInstanceLock()) {
       loadSkin: (name, tuning) => loadSkin(process.env.AIPET_SKIN || name, tuning),
       getMenuTemplate,
       openSettings: (tab) => settings.open(tab),
+      getToolSetup: () => tools,
     });
 
     settings = createSettingsWindow({
@@ -116,6 +131,7 @@ if (!app.requestSingleInstanceLock()) {
       config,
       personas,
       manager,
+      tools,
       userDataDir: userData,
       preloadPath: path.join(here, '../preload/settingsPreload.cjs'),
       htmlPath: path.join(here, '../settings/index.html'),
@@ -146,6 +162,7 @@ if (!app.requestSingleInstanceLock()) {
       settings.pushState();
     });
     manager.onStatus(() => settings.pushState());
+    tools.subscribe(() => settings.pushState()); // 설치/로그인 진행 상태가 바뀔 때마다 설정 창에 알린다
 
     await manager.start();
 

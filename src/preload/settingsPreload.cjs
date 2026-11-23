@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('aipetSettings', {
   loginCommand: (/** @type {string} */ connectionId) => invoke('settings:login-command', connectionId),
   pickDir: () => invoke('settings:pick-dir'),
 
+  // 설치하기 / 로그인하기 (Codex)
+  toolsInstall: (/** @type {string} */ tool) => invoke('settings:tools-install', tool),
+  toolsCancel: () => invoke('settings:tools-cancel'),
+  toolsLogin: (/** @type {string} */ connectionId) => invoke('settings:tools-login', connectionId),
+  toolsCancelLogin: () => invoke('settings:tools-cancel-login'),
+  toolsOpenLoginUrl: (/** @type {string} */ url) => invoke('settings:tools-open-login-url', url),
+
   // 말투 파일
   personaRead: (/** @type {string} */ id) => invoke('settings:persona-read', id),
   personaSave: (/** @type {string} */ id, /** @type {string} */ text) => invoke('settings:persona-save', id, text),

@@ -367,3 +367,18 @@ test('Codex 쓰기 허용은 기본 꺼짐이고, 불리언만 저장하며 다�
   a.update({ permissions: { codexWrite: true } });
   assert.equal(open(file).get().permissions.codexWrite, true);
 });
+
+test('설치 제안 말풍선을 보여 줬는지는 기본 꺼짐이고, 불리언만 저장된다', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aipet-store-'));
+  try {
+    const s = createStore({ file: path.join(dir, 's.json'), safeStorage: null });
+    assert.equal(s.get().general.installOffered, false);
+    s.update({ general: { installOffered: 'yes' } });
+    assert.equal(s.get().general.installOffered, false, '불리언이 아니면 버린다');
+    s.update({ general: { installOffered: true } });
+    assert.equal(s.get().general.installOffered, true);
+    assert.equal(createStore({ file: path.join(dir, 's.json'), safeStorage: null }).get().general.installOffered, true, '다시 열어도 유지');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

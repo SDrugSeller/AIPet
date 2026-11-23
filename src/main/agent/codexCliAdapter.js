@@ -12,10 +12,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { privateCodexBinary } from '../tools/toolPaths.js';
 import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, launchFailureMessage, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
 
 /** 실행이 막혔을 때 안내할 다른 설치 방법 */
-const CODEX_INSTALL = 'Node.js를 설치한 뒤 cmd에서 npm i -g @openai/codex 로 CLI를 따로 설치하세요(로그인은 데스크톱 앱과 같아서 다시 할 필요가 없어요)';
+const CODEX_INSTALL = '설정의 "설치하기"로 앱 전용 Codex를 설치하거나, Node.js를 설치한 뒤 cmd에서 npm i -g @openai/codex 로 따로 설치하세요(로그인은 데스크톱 앱과 같아서 다시 할 필요가 없어요)';
 
 /** Codex Desktop(Microsoft Store 앱)이 안에 넣어 둔 codex.exe의 패키지 안 위치 (로그인은 CLI와 같은 ~/.codex를 쓴다) */
 const STORE_CODEX_EXE = ['app', 'resources', 'codex.exe'];
@@ -41,6 +42,9 @@ export function findStoreCodex(dirs = findStoreAppDirs) {
 /** @param {string} [override] 설정에서 지정한 경로. 지정했는데 없으면 null @returns {string | null} */
 export function findCodexBinary(override = '') {
   if (override) return isFile(override) ? override : null;
+  // 디버그 전용: 설치 안내를 확인하려고 PATH·npm·Store 앱의 codex를 없는 것으로 친다 (앱이 설치한 것은 그대로 보인다)
+  const hidden = process.env.AIPET_DEBUG === '1' && process.env.AIPET_CODEX_HIDE === '1';
+  if (hidden) return privateCodexBinary();
   const found = findOnPath('codex');
   if (found) return found;
   // npm 전역 설치 위치 (PATH에 없을 때)
@@ -49,6 +53,9 @@ export function findCodexBinary(override = '') {
     const p = path.join(npmDir, name);
     if (isFile(p)) return p;
   }
+  // 앱이 "설치하기"로 설치한 것 (앱 전용 폴더)
+  const own = privateCodexBinary();
+  if (own) return own;
   // Codex Desktop(Microsoft Store 앱)만 설치한 경우: 앱 안의 codex.exe를 쓴다
   return isWin ? findStoreCodex() : null;
 }
@@ -160,16 +167,17 @@ export function createCodexCliAdapter({ getConfig }) {
       if (!bin) {
         return {
           ok: false,
+          ...(cfg.path ? {} : { problem: /** @type {const} */ ('not-found') }),
           reason: cfg.path
             ? '지정한 경로에서 codex를 찾을 수 없어요. 설정에서 경로를 확인해 주세요.'
-            : 'codex CLI를 찾을 수 없어요. 설치(npm i -g @openai/codex)하거나 Codex 데스크톱 앱(Microsoft Store)을 설치한 뒤, 로그인해 주세요(터미널에서 codex login).',
+            : 'codex CLI를 찾을 수 없어요. 설정 → 연결의 "앱 전용으로 설치하기"로 앱이 대신 설치하거나, Codex 데스크톱 앱(Microsoft Store)을 설치하거나 npm i -g @openai/codex로 설치한 뒤 로그인해 주세요.',
         };
       }
       const v = await run(bin, ['--version'], 20000);
-      if (v.code !== 0) return { ok: false, reason: v.code === null ? launchFailureMessage('codex', v.stderr, { bin, install: CODEX_INSTALL }) : `codex 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
+      if (v.code !== 0) return { ok: false, ...(v.code === null ? { problem: /** @type {const} */ ('launch-failed') } : {}), reason: v.code === null ? launchFailureMessage('codex', v.stderr, { bin, install: CODEX_INSTALL }) : `codex 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
       const login = await run(bin, ['login', 'status'], 20000);
       const status = (login.stdout + login.stderr).trim().split('\n')[0] ?? '';
-      if (login.code !== 0) return { ok: false, reason: `codex에 로그인되어 있지 않아요. 터미널에서 codex login을 실행해 주세요. (${status})` };
+      if (login.code !== 0) return { ok: false, problem: 'not-logged-in', reason: `codex에 로그인되어 있지 않아요. 터미널에서 codex login을 실행해 주세요. (${status})` };
       const mode = cfg.write
         ? '작업 폴더 샌드박스에서 실행돼요 (파일 수정·명령 실행은 묻지 않고 진행, 작업 폴더 밖 쓰기와 네트워크는 차단)'
         : '읽기 전용으로 실행돼요 (파일을 바꾸지 않아요)';

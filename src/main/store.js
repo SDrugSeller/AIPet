@@ -86,6 +86,8 @@ export const DEFAULTS = {
     visible: true,
     /** 펫끼리 어울리기: 깨어 있는 펫이 자고 있는 펫을 깨우러 간다 */
     petSocial: true,
+    /** "Codex를 찾지 못했어요. 설치할까요?" 말풍선을 이미 한 번 보여 줬다 (설정의 연결 카드에는 버튼이 늘 있다) */
+    installOffered: false,
   },
 };
 
@@ -153,6 +155,7 @@ const SPEC = {
     sound: isBool,
     visible: isBool,
     petSocial: isBool,
+    installOffered: isBool,
   },
 };
 

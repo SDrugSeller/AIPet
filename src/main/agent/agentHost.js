@@ -80,6 +80,7 @@ export function createAgentHost({
       checked: detected.has(a.id),
       available: usable(a.id),
       reason: isEnabled(a.id) ? (detected.get(a.id)?.reason ?? '') : '사용 안 함',
+      problem: isEnabled(a.id) ? (detected.get(a.id)?.problem ?? '') : '',
       info: detected.get(a.id)?.info ?? '',
       selected: a.id === selected,
     }));

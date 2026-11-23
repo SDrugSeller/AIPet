@@ -189,9 +189,9 @@ export function createChat(api, pet, layer, template) {
   // 알림 말풍선의 버튼
   /** @param {string} sel */
   const nq = (sel) => /** @type {HTMLElement} */ (notice.querySelector(sel));
-  // 설정 안내(kind 'setup')는 "대화하기" 대신 "설정 열기"로 이어진다
+  // 설정 안내(kind 'setup')는 "대화하기" 대신 "설정 열기"로, 설치 제안(kind 'install')은 "설치하기"로 이어진다
   let noticeKind = '';
-  const noticeAct = () => api.noticeAction(petId, noticeKind === 'setup' ? 'settings' : 'open');
+  const noticeAct = () => api.noticeAction(petId, noticeKind === 'setup' ? 'settings' : noticeKind === 'install' ? 'install' : 'open');
   nq('.notice-open').addEventListener('click', noticeAct);
   nq('.notice-close').addEventListener('click', () => api.noticeAction(petId, 'close'));
   noticeText.addEventListener('click', noticeAct); // 말풍선을 누르면 대화(또는 설정)로 이어진다
@@ -251,7 +251,8 @@ export function createChat(api, pet, layer, template) {
     /** @param {{ text: string, kind?: string }} n */
     showNotice(n) {
       noticeKind = n.kind ?? '';
-      nq('.notice-open').textContent = noticeKind === 'setup' ? '설정 열기' : '대화하기';
+      nq('.notice-open').textContent = noticeKind === 'setup' ? '설정 열기' : noticeKind === 'install' ? '설치하기' : '대화하기';
+      nq('.notice-close').textContent = noticeKind === 'install' ? '나중에' : '닫기';
       noticeText.textContent = n.text;
       noticeWanted = true;
       layoutKey = '';

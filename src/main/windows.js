@@ -30,9 +30,10 @@ import { createWindowWatcher } from './windowWatcher.js';
  *   loadSkin: (name: string, tuning?: any) => Promise<any>,
  *   getMenuTemplate: (petId?: string) => Electron.MenuItemConstructorOptions[],
  *   openSettings: (tab?: string) => void,
+ *   getToolSetup?: () => ReturnType<typeof import('./tools/toolSetup.js').createToolSetup> | null,
  * }} opts
  */
-export function createOverlayManager({ preloadPath, rendererPath, debug, logging = false, log = () => {}, store, config, loadSkin, getMenuTemplate, openSettings }) {
+export function createOverlayManager({ preloadPath, rendererPath, debug, logging = false, log = () => {}, store, config, loadSkin, getMenuTemplate, openSettings, getToolSetup = () => null }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
 
@@ -184,6 +185,9 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id;
   }
 
+  /** 조용히 보여 주는 알림 종류: 모니터를 옮겨 가거나 소리를 내지 않는다 @param {string} kind */
+  const isQuietKind = (kind) => kind === 'setup' || kind === 'install';
+
   /**
    * 알림을 띄운다. 설정이 켜져 있고 펫이 다른 모니터에 있으면, 먼저 사용자가 보고 있는 모니터로 문을 통해 건너온 뒤 착지하면 띄운다.
    * 설정 안내(setup)는 조용히 보여 주는 것이라 옮기지 않는다.
@@ -192,7 +196,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   function showNotice(petId, n) {
     const pet = pets.get(petId);
     if (!pet || pet.host.isOpen) return; // 이미 대화창이 열려 있다
-    if (n.kind !== 'setup' && store.get().behavior.noticeFollowsFocus) {
+    if (!isQuietKind(n.kind) && store.get().behavior.noticeFollowsFocus) {
       const want = activeDisplayId();
       if (pet.engine.travel(want, () => presentNotice(petId, n))) {
         log('notice', petId, '알림을 전하러 다른 모니터로 감', `${pet.engine.pet.display} → ${want}`);
@@ -210,13 +214,13 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     pet.noticeActive = true;
     pet.noticeInfo = { text, kind }; // 아직 열리지 않은 창이 나중에 열려도 지금 떠 있는 알림을 받도록 기억해 둔다
     sendAll('notice:show', { petId, text, kind });
-    // 설정 안내(setup)는 조용히 보여 주고 더 오래 둔다. 나머지는 펫이 알림을 알리고(소리 포함) 12초 뒤에 사라진다.
-    if (kind !== 'setup') {
+    // 설정 안내(setup)와 설치 제안(install)은 조용히 보여 주고 더 오래 둔다. 나머지는 펫이 알림을 알리고(소리 포함) 12초 뒤에 사라진다.
+    if (!isQuietKind(kind)) {
       pet.engine.setAgentAnim('attention');
       if (kind !== 'done' && store.get().general.sound) shell.beep(); // 사용자가 시킨 일의 결과는 조용히, 먼저 거는 말에는 소리
     }
     if (pet.noticeTimer) clearTimeout(pet.noticeTimer);
-    pet.noticeTimer = setTimeout(() => hideNotice(petId), kind === 'setup' ? 25_000 : 12_000);
+    pet.noticeTimer = setTimeout(() => hideNotice(petId), isQuietKind(kind) ? 25_000 : 12_000);
   }
 
   /** @param {string} petId */
@@ -298,10 +302,50 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     showNotice(id, { text: SETUP_HINT_TEXT, kind: 'setup' });
   }
 
+  // --- 설치 제안: Codex 연결이 있는데 codex를 못 찾으면 그 펫이 "설치할까요?"라고 한 번 묻는다 (설정의 연결 카드에는 버튼이 늘 있다) ---
+
+  const INSTALL_OFFER_TEXT = {
+    'not-found': 'Codex를 찾지 못했어요. 제가 대신 설치해 드릴까요? (공식 사이트에서 받아 AIPet 전용 폴더에만 설치하고, 이 PC의 다른 곳은 건드리지 않아요)',
+    'launch-failed': 'Codex를 실행하지 못했어요. 앱 전용 폴더에 새로 설치해 볼까요? (공식 사이트에서 받고, 이 PC의 다른 곳은 건드리지 않아요)',
+  };
+
+  /** 설치 제안 말풍선이 떠 있는 펫 id */
+  /** @type {string | null} */
+  let installOfferPetId = null;
+
+  function updateInstallOffer() {
+    const tools = getToolSetup();
+    if (!tools || tools.busy()) return;
+    if (installOfferPetId) {
+      // 그 사이 Codex가 연결됐으면 제안을 거둔다
+      const b = pets.get(installOfferPetId)?.host.backends()[0];
+      if (!b || b.available || b.problem === '') {
+        const id = installOfferPetId;
+        installOfferPetId = null;
+        hideNotice(id);
+      }
+      return;
+    }
+    if (store.get().general.installOffered) return;
+    if (!visible || suspended || quiet.fullscreen || store.get().general.doNotDisturb) return;
+    for (const [id, pet] of pets) {
+      if (pet.conn.kind !== 'codex-cli') continue;
+      const b = pet.host.backends()[0];
+      const problem = /** @type {'not-found' | 'launch-failed' | ''} */ (b?.problem === 'not-found' || b?.problem === 'launch-failed' ? b.problem : '');
+      if (!b?.checked || b.available || !problem) continue;
+      installOfferPetId = id;
+      setupHintShown = true; // 같은 말풍선 자리를 쓰는 일반 설정 안내는 이번 실행에서는 건너뛴다
+      store.update({ general: { installOffered: true } }); // 처음 한 번만 묻는다
+      showNotice(id, { text: INSTALL_OFFER_TEXT[problem], kind: 'install' });
+      return;
+    }
+  }
+
   /** @param {Pet} pet */
   async function refreshPet(pet) {
     await pet.host.refresh();
     emitStatus();
+    updateInstallOffer();
     updateSetupHint();
   }
 
@@ -636,6 +680,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     hideNotice(pet.id);
     if (action === 'open') pet.host.setOpen(true); // "대화하기"
     if (action === 'settings') openSettings('ai'); // "설정 열기" (설정 안내 말풍선)
+    if (action === 'install' && pet.conn.kind === 'codex-cli') {
+      // "설치하기" (설치 제안 말풍선): 설치를 시작하고 진행 상황이 보이는 설정 창을 연다
+      installOfferPetId = null;
+      getToolSetup()?.startInstall('codex-cli');
+      openSettings('ai');
+    }
   });
   ipcMain.on('perm:respond', (e, petId, id, allow) => {
     if (typeof id === 'string' && typeof allow === 'boolean') petOf(e, petId)?.host.respondPermission(id, allow);
@@ -849,11 +899,11 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
 
   /** 연결 id → 점검 결과 (설정 창에 보여 준다). 펫이 없는(꺼진) 연결은 포함되지 않는다. */
   function statuses() {
-    /** @type {Record<string, { checked: boolean, available: boolean, reason: string, info: string }>} */
+    /** @type {Record<string, { checked: boolean, available: boolean, reason: string, info: string, problem: string }>} */
     const out = {};
     for (const [id, pet] of pets) {
       const b = pet.host.backends()[0];
-      out[id] = { checked: !!b?.checked, available: !!b?.available, reason: b?.reason ?? '', info: b?.info ?? '' };
+      out[id] = { checked: !!b?.checked, available: !!b?.available, reason: b?.reason ?? '', info: b?.info ?? '', problem: b?.problem ?? '' };
     }
     return out;
   }
@@ -939,6 +989,20 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     },
     isVisible: () => visible,
     setVisible,
+
+    /**
+     * 설치/로그인이 끝났을 때 그 연결의 펫이 말풍선으로 알린다 (설정 창을 닫고 기다린 사용자를 위해).
+     * @param {import('./tools/toolSetup.js').SetupResult} r
+     */
+    notifySetupResult(r) {
+      if (r.cancelled) return;
+      const id = r.connId && pets.has(r.connId) ? r.connId : [...pets.values()].find((p) => p.conn.kind === 'codex-cli')?.id;
+      if (!id) return;
+      const b = pets.get(id)?.host.backends()[0];
+      if (r.ok && b?.available) showNotice(id, { text: r.kind === 'install' ? 'Codex를 설치했고 연결됐어요! 말을 걸어 보세요.' : '로그인했어요! 말을 걸어 보세요.', kind: 'done' });
+      else if (r.ok && b?.problem === 'not-logged-in') showNotice(id, { text: 'Codex를 설치했어요. 이제 로그인이 필요해요. 설정에서 "로그인하기"를 눌러 주세요.', kind: 'setup' });
+      else if (!r.ok) showNotice(id, { text: r.message.length > 140 ? `${r.message.slice(0, 140)}…` : r.message, kind: 'setup' });
+    },
 
     /** 창과 펫을 만들고 활성 창 감시를 시작한다. */
     async start() {

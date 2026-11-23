@@ -145,6 +145,104 @@ function el(tag, cls = '', text = '') {
   return e;
 }
 
+/**
+ * Codex 카드의 "설치하기 / 로그인하기" 상자. 상태에 따라 필요한 것만 보여 준다.
+ *  - codex를 못 찾았다/실행하지 못했다 → 앱 전용으로 설치하기 (무엇을 어디에 설치하는지 펼쳐 볼 수 있다)
+ *  - 설치 중 → 진행 상황과 취소
+ *  - 로그인이 필요하다 → 로그인하기 (공식 CLI가 브라우저를 연다. 앱은 토큰을 보지 않는다)
+ * @param {string} id 연결 id
+ */
+function buildSetupBox(id) {
+  const root = el('div', 'setup-box');
+  root.hidden = true;
+  const title = el('p', 'setup-title');
+  const details = /** @type {HTMLDetailsElement} */ (el('details', 'setup-details'));
+  details.append(el('summary', '', '무엇을 설치하나요?'));
+  const list = el('ul');
+  const where = el('li');
+  list.append(
+    el('li', '', '공식 사이트(nodejs.org)에서 Node.js를 받아(약 40MB, 공식 해시로 확인) 아래 폴더에 풀어요.'),
+    el('li', '', '그 안에서 Codex(npm 패키지 @openai/codex, 약 500MB)를 설치해요.'),
+    where,
+    el('li', '', '관리자 권한이 필요 없고 이 PC의 설정(PATH 등)은 바꾸지 않아요. 지우려면 위 폴더를 삭제하면 돼요.'),
+    el('li', '', '로그인은 Codex 데스크톱 앱과 같은 계정 정보를 써서, 이미 로그인했다면 다시 할 필요가 없어요.'),
+  );
+  details.append(list);
+  const bar = /** @type {HTMLProgressElement} */ (el('progress'));
+  bar.max = 100;
+  const status = el('p', 'muted setup-status');
+  const buttons = el('div', 'inline');
+  const installBtn = el('button', 'primary', '앱 전용으로 설치하기');
+  installBtn.type = 'button';
+  installBtn.addEventListener('click', async () => {
+    const r = await api.toolsInstall('codex-cli');
+    if (r) apply(r.state);
+    if (r && !r.started) flashSaved('지금은 다른 작업을 하는 중이에요');
+  });
+  const cancelBtn = el('button', '', '취소');
+  cancelBtn.type = 'button';
+  cancelBtn.addEventListener('click', () => api.toolsCancel());
+  const loginBtn = el('button', 'primary', '로그인하기');
+  loginBtn.type = 'button';
+  loginBtn.addEventListener('click', async () => {
+    const r = await api.toolsLogin(id);
+    if (r?.state) apply(r.state);
+    if (r && !r.ok) flashSaved(r.reason ?? '로그인을 시작하지 못했어요');
+  });
+  const cancelLoginBtn = el('button', '', '로그인 취소');
+  cancelLoginBtn.type = 'button';
+  cancelLoginBtn.addEventListener('click', () => api.toolsCancelLogin());
+  const urlBtn = el('button', '', '브라우저가 안 열렸다면 여기를 눌러요');
+  urlBtn.type = 'button';
+  urlBtn.addEventListener('click', () => state.tools?.login?.url && api.toolsOpenLoginUrl(state.tools.login.url));
+  buttons.append(installBtn, cancelBtn, loginBtn, cancelLoginBtn, urlBtn);
+  root.append(title, details, bar, status, buttons);
+
+  /** @param {any} c */
+  function update(c) {
+    const st = state.statuses[c.id];
+    const t = state.tools ?? { install: { phase: 'idle' }, login: { phase: 'idle' } };
+    const installing = t.install.phase === 'running';
+    const loggingIn = t.login.phase === 'running' && t.login.connId === id;
+    const unavailable = c.enabled && !!st?.checked && !st.available;
+    const missing = unavailable && (st.problem === 'not-found' || st.problem === 'launch-failed');
+    const needLogin = unavailable && st.problem === 'not-logged-in';
+    const installFailed = t.install.phase === 'error' && t.install.tool === 'codex-cli';
+    const loginFailed = t.login.phase === 'error' && t.login.connId === id;
+    const show = installing || loggingIn || missing || needLogin || installFailed || loginFailed;
+    root.hidden = !show;
+    if (!show) return;
+
+    where.textContent = `설치 위치: ${state.defaults.toolsDir}`;
+    title.textContent = installing
+      ? '설치하는 중이에요. 이 창을 닫아도 계속돼요.'
+      : loggingIn
+        ? '브라우저에서 로그인해 주세요.'
+        : installFailed
+          ? '설치하지 못했어요.'
+          : loginFailed
+            ? '로그인하지 못했어요.'
+            : needLogin
+              ? 'Codex에 로그인이 필요해요. 버튼을 누르면 브라우저가 열려요.'
+              : st.problem === 'launch-failed'
+                ? 'Codex를 실행하지 못했어요. 앱 전용 폴더에 새로 설치해 볼까요?'
+                : 'Codex를 찾지 못했어요. 앱이 대신 설치해 드릴까요?';
+    bar.hidden = !installing;
+    if (installing && t.install.percent !== null) bar.value = t.install.percent;
+    else bar.removeAttribute('value'); // 진행률을 모를 때는 계속 움직이는 막대
+    status.textContent = installing ? t.install.message : loggingIn ? t.login.message : installFailed ? t.install.reason : loginFailed ? t.login.message : '';
+    details.hidden = installing || loggingIn || needLogin;
+    installBtn.hidden = installing || loggingIn || needLogin || (!missing && !installFailed);
+    installBtn.textContent = installFailed ? '다시 시도' : '앱 전용으로 설치하기';
+    cancelBtn.hidden = !installing;
+    loginBtn.hidden = loggingIn || installing || !(needLogin || loginFailed);
+    cancelLoginBtn.hidden = !loggingIn;
+    urlBtn.hidden = !(loggingIn && t.login.url);
+  }
+
+  return { root, update };
+}
+
 /** @param {any} conn 처음 보는 연결 @returns {Card} */
 function buildCard(conn) {
   const id = conn.id;
@@ -167,6 +265,9 @@ function buildCard(conn) {
   const info = el('pre', 'info');
   const reason = el('p', 'reason');
   root.append(info, reason);
+  // Codex: 못 찾았을 때 앱이 대신 설치해 주고, 로그인도 도와 주는 상자
+  const setup = conn.kind === 'codex-cli' ? buildSetupBox(id) : null;
+  if (setup) root.append(setup.root);
 
   // 켜기 + 삭제
   const row = el('div', 'inline spread');
@@ -319,6 +420,8 @@ function buildCard(conn) {
     // 스킨/말투 목록
     fillSelect(skinSel, state.skins.map(skinOption), c.skin);
     fillSelect(personaSel, state.personas.items.map((/** @type {any} */ p) => [p.id, p.name]), c.persona);
+
+    setup?.update(c);
 
     // 상태 배지
     const st = state.statuses[c.id];

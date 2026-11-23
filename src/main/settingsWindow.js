@@ -13,13 +13,14 @@ import { inspectSkin, listSkins, userSkinsDir } from './skin.js';
  *   config: ReturnType<typeof import('./config.js').createConfig>,
  *   personas: ReturnType<typeof import('./personas.js').createPersonaStore>,
  *   manager: ReturnType<typeof import('./windows.js').createOverlayManager>,
+ *   tools: ReturnType<typeof import('./tools/toolSetup.js').createToolSetup>,
  *   userDataDir: string,
  *   preloadPath: string,
  *   htmlPath: string,
  *   packaged: boolean,
  * }} opts
  */
-export function createSettingsWindow({ store, config, personas, manager, userDataDir, preloadPath, htmlPath, packaged }) {
+export function createSettingsWindow({ store, config, personas, manager, tools, userDataDir, preloadPath, htmlPath, packaged }) {
   /** @type {BrowserWindow | null} */
   let win = null;
   /** 열 때 먼저 보여 줄 탭 */
@@ -43,9 +44,12 @@ export function createSettingsWindow({ store, config, personas, manager, userDat
         workDir: config.defaultWorkDir,
         accountDir: path.join(userDataDir, 'claude-accounts'),
         openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
+        toolsDir: path.join(userDataDir, 'tools'),
       },
       keyFromEnv: { openai: !!process.env.AIPET_OPENAI_KEY, anthropic: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) },
       packaged,
+      /** 앱이 대신 하는 설치/로그인의 진행 상태 */
+      tools: tools.state(),
     };
   }
 
@@ -105,6 +109,39 @@ export function createSettingsWindow({ store, config, personas, manager, userDat
     const q = (/** @type {string} */ s) => `'${s.replace(/'/g, "''")}'`;
     const bin = findClaudeBinary(process.env, cfg.path) ?? 'claude';
     return { ok: true, command: `$env:CLAUDE_CONFIG_DIR=${q(cfg.configDir)}; & ${q(bin)}` };
+  });
+
+  // --- 설치하기 / 로그인하기 (Codex) ---
+
+  ipcMain.handle('settings:tools-install', (e, tool) => {
+    if (!fromSettings(e) || typeof tool !== 'string') return null;
+    return { started: tools.startInstall(tool), state: state() };
+  });
+
+  ipcMain.handle('settings:tools-cancel', (e) => {
+    if (!fromSettings(e)) return null;
+    tools.cancelInstall();
+    return true;
+  });
+
+  ipcMain.handle('settings:tools-login', (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    const c = store.get().connections.find((x) => x.id === id);
+    if (!c || c.kind !== 'codex-cli') return null;
+    return { ...tools.startLogin(id), state: state() };
+  });
+
+  ipcMain.handle('settings:tools-cancel-login', (e) => {
+    if (!fromSettings(e)) return null;
+    tools.cancelLogin();
+    return true;
+  });
+
+  /** 로그인 주소를 다시 열기 (공식 로그인 주소만 연다) */
+  ipcMain.handle('settings:tools-open-login-url', (e, url) => {
+    if (!fromSettings(e) || typeof url !== 'string') return null;
+    tools.openLoginUrl(url);
+    return true;
   });
 
   ipcMain.handle('settings:pick-dir', async (e) => {

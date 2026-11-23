@@ -423,3 +423,43 @@ input.conn-name:focus {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Codex 설치하기 / 로그인하기 상자 */
+.setup-box {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.setup-box[hidden],
+.setup-box [hidden] {
+  display: none !important;
+}
+.setup-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.setup-details {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.setup-details ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.setup-box progress {
+  width: 100%;
+  height: 10px;
+  margin: 4px 0;
+}
+.setup-status {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.setup-status:empty {
+  display: none;
+}
