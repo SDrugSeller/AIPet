@@ -8,7 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
-import { cleanEnv, composePrompt, findOnPath, isFile, isWin, killTree, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+import { cleanEnv, composePrompt, findOnPath, isFile, isWin, killTree, launchFailureMessage, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+
+/** 실행이 막혔을 때 안내할 다른 설치 방법 */
+const GEMINI_INSTALL = 'Node.js를 설치한 뒤 cmd에서 npm i -g @google/gemini-cli 로 설치하세요';
 
 /** @param {string} [override] 설정에서 지정한 경로. 지정했는데 없으면 null @returns {string | null} */
 export function findGeminiBinary(override = '') {
@@ -107,7 +110,7 @@ export function createGeminiCliAdapter({ getConfig }) {
         };
       }
       const v = await run(bin, ['--version'], 30000);
-      if (v.code !== 0) return { ok: false, reason: `gemini 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
+      if (v.code !== 0) return { ok: false, reason: v.code === null ? launchFailureMessage('gemini', v.stderr, { bin, install: GEMINI_INSTALL }) : `gemini 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
       // gemini에는 로그인 상태를 알려 주는 명령이 없다. 흔적이 없어도 다른 방식으로 설정했을 수 있어 막지는 않는다.
       const auth = authHint();
       const authLine = auth
@@ -154,7 +157,7 @@ export function createGeminiCliAdapter({ getConfig }) {
         c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
         c.on('error', (e) => {
           st.finished = true;
-          queue.push({ type: 'error', message: `gemini 실행에 실패했어요: ${e.message}` });
+          queue.push({ type: 'error', message: launchFailureMessage('gemini', e.message, { bin, install: GEMINI_INSTALL }) });
           queue.close();
         });
         c.on('close', (code) => {

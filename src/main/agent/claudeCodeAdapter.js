@@ -11,9 +11,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
-import { cleanEnv, findOnPath, isFile, isWin, killTree, readLines, run, spawnCli } from './cli.js';
+import { cleanEnv, findOnPath, isFile, isWin, killTree, launchFailureMessage, readLines, run, spawnCli } from './cli.js';
 
 const exe = isWin ? '.exe' : '';
+
+/** 실행이 막혔을 때 안내할 다른 설치 방법 */
+const CLAUDE_INSTALL = 'Claude Code를 터미널에서 직접 설치하세요(공식 설치 안내를 따르면 되고, 로그인은 터미널에서 claude로 합니다)';
 
 /**
  * `claude` 실행 파일을 찾는다. 순서: 직접 지정한 경로 → PATH → 공식 설치 위치 → VS Code 확장에 포함된 바이너리.
@@ -196,7 +199,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
       }
       const env = envFor(cfg);
       const v = await run(bin, ['--version'], 15000, env);
-      if (v.code !== 0) return { ok: false, reason: `claude 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
+      if (v.code !== 0) return { ok: false, reason: v.code === null ? launchFailureMessage('claude', v.stderr, { bin, install: CLAUDE_INSTALL }) : `claude 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
 
       const a = await run(bin, ['auth', 'status'], 15000, env);
       let info = `${v.stdout.trim()} · ${bin}`;
@@ -296,7 +299,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
           c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
           c.on('error', (e) => {
             st.finished = true;
-            queue.push({ type: 'error', message: `claude 실행에 실패했어요: ${e.message}` });
+            queue.push({ type: 'error', message: launchFailureMessage('claude', e.message, { bin, install: CLAUDE_INSTALL }) });
             queue.close();
           });
           c.on('close', (code) => {

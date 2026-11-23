@@ -12,7 +12,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
-import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, launchFailureMessage, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
+
+/** 실행이 막혔을 때 안내할 다른 설치 방법 */
+const CODEX_INSTALL = 'Node.js를 설치한 뒤 cmd에서 npm i -g @openai/codex 로 CLI를 따로 설치하세요(로그인은 데스크톱 앱과 같아서 다시 할 필요가 없어요)';
 
 /** Codex Desktop(Microsoft Store 앱)이 안에 넣어 둔 codex.exe의 패키지 안 위치 (로그인은 CLI와 같은 ~/.codex를 쓴다) */
 const STORE_CODEX_EXE = ['app', 'resources', 'codex.exe'];
@@ -163,7 +166,7 @@ export function createCodexCliAdapter({ getConfig }) {
         };
       }
       const v = await run(bin, ['--version'], 20000);
-      if (v.code !== 0) return { ok: false, reason: `codex 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
+      if (v.code !== 0) return { ok: false, reason: v.code === null ? launchFailureMessage('codex', v.stderr, { bin, install: CODEX_INSTALL }) : `codex 실행에 실패했어요: ${(v.stderr || v.stdout).trim().slice(0, 200)}` };
       const login = await run(bin, ['login', 'status'], 20000);
       const status = (login.stdout + login.stderr).trim().split('\n')[0] ?? '';
       if (login.code !== 0) return { ok: false, reason: `codex에 로그인되어 있지 않아요. 터미널에서 codex login을 실행해 주세요. (${status})` };
@@ -214,7 +217,7 @@ export function createCodexCliAdapter({ getConfig }) {
         c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
         c.on('error', (e) => {
           st.finished = true;
-          queue.push({ type: 'error', message: `codex 실행에 실패했어요: ${e.message}` });
+          queue.push({ type: 'error', message: launchFailureMessage('codex', e.message, { bin, install: CODEX_INSTALL }) });
           queue.close();
         });
         c.on('close', (code) => {

@@ -6,6 +6,13 @@
 
 [docs/DESIGN.md](docs/DESIGN.md) 12장 참고: ① 첫 실행 안내(마법사·단계 안내·자동 감지), ② API 연결의 도구 루프, ③ (보류) Antigravity CLI 연결 — 착수 전 확인 항목은 12장 4번에 정리해 두었습니다. 배포 전에는 코드 서명과 제공사 약관 확인이 남아 있습니다.
 
+## 2026-11-23 — 0.1.13: 실행 거부(spawn EPERM) 안내
+
+- Codex·Claude Code·Gemini CLI를 띄우지 못했을 때 `spawn EPERM` 같은 원문만 보이던 것을, 원인과 다음에 해 볼 일을 알려 주는 안내로 바꿨습니다. 설정의 연결 상태와 대화창의 오류 모두 같은 문구를 씁니다.
+  - `EPERM`/`EACCES`: "Windows가 막았어요". 백신·보안 프로그램·회사 정책 가능성, AIPet을 백신 예외에 추가하기, (Store 앱 안의 파일이면 그 점,) 다른 설치 방법(Codex: Node.js 설치 후 `npm i -g @openai/codex`, 로그인은 데스크톱 앱과 같아 다시 할 필요 없음), 설치 뒤 "다시 확인".
+  - `ENOENT`: 실행 파일이 없다는 것과 설정의 경로 확인.
+- 테스트 2개 추가(전체 319개 통과).
+
 ## 2026-11-23 — 0.1.12: Codex 데스크톱(Microsoft Store 앱) 자동 인식
 
 - Codex 데스크톱 앱만 설치한 PC에서 앱이 `codex`를 못 찾던 문제를 고쳤습니다. `PATH`와 npm 전역 폴더에서 못 찾으면 레지스트리의 Microsoft Store 패키지 목록(`OpenAI.Codex_*`)에서 설치 폴더를 읽어 `app\resources\codex.exe`를 씁니다. 새 버전부터 보고, 업데이트로 경로가 바뀌어도 다시 찾습니다. 관리자 권한이 필요 없고 조회는 십수 ms입니다. (Store 앱은 `PATH`에 등록되지 않고 `WindowsApps` 폴더는 목록을 볼 수 없어서 사용자가 경로를 알아내기도 어려웠습니다.)

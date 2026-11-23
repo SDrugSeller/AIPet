@@ -86,6 +86,29 @@ export function findStoreAppDirs(name, { reg = regQuery, platform = process.plat
   return dirs;
 }
 
+/**
+ * 실행 파일을 띄우지 못했을 때(spawn 오류) 사용자에게 보여 줄 안내. 원인과 다음에 해 볼 일을 알려 준다.
+ * @param {string} tool 'codex' 같은 이름
+ * @param {unknown} raw 원래 오류 메시지 (예: 'spawn EPERM')
+ * @param {{ bin?: string, install?: string }} [opts] bin: 실행하려던 파일, install: 따로 설치하는 방법 한 줄
+ */
+export function launchFailureMessage(tool, raw, { bin = '', install = '' } = {}) {
+  const text = String(raw ?? '').trim();
+  const where = bin ? ` (${bin})` : '';
+  if (/\b(EPERM|EACCES)\b|access is denied|operation not permitted/i.test(text)) {
+    const inStore = /WindowsApps/i.test(bin);
+    const lines = [`${tool}를 실행하려 했는데 Windows가 막았어요 (${text}).${where}`];
+    lines.push('백신·보안 프로그램이나 회사 정책이 AIPet의 실행을 막았을 수 있어요. AIPet을 백신 예외에 추가해 보세요.');
+    if (inStore) lines.push('이 파일은 Microsoft Store 앱 안에 있어서 막혔을 수 있어요.');
+    if (install) lines.push(`다른 방법: ${install} (설치한 뒤 설정에서 "다시 확인"을 눌러 주세요).`);
+    return lines.join(' ');
+  }
+  if (/\bENOENT\b/i.test(text)) {
+    return `${tool} 실행 파일을 찾을 수 없어요${where}. 지웠거나 옮겼다면 설정의 실행 파일 경로를 확인해 주세요. (${text})`;
+  }
+  return `${tool} 실행에 실패했어요: ${text}`;
+}
+
 /** cmd.exe용 인자 인용 (.cmd 셔임 실행 시에만 사용) @param {string} s */
 const quoteWin = (s) => (/^[\w@%+=:,./\\-]+$/.test(s) ? s : `"${s.replace(/"/g, '""')}"`);
 

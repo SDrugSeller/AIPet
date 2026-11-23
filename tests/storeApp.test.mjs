@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { findStoreCodex } from '../src/main/agent/codexCliAdapter.js';
-import { findStoreAppDirs } from '../src/main/agent/cli.js';
+import { findStoreAppDirs, launchFailureMessage } from '../src/main/agent/cli.js';
 
 const KEY = String.raw`HKEY_CURRENT_USER\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages`;
 
@@ -70,4 +70,22 @@ test('findStoreCodex: 패키지 폴더 안의 app/resources/codex.exe를 찾고,
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('실행 실패 안내: EPERM은 원인과 다른 설치 방법을, Store 앱 안의 파일이면 그 점도 알려 준다', () => {
+  const plain = launchFailureMessage('codex', 'spawn EPERM', { bin: String.raw`C:\tools\codex.exe`, install: 'npm으로 설치하세요' });
+  assert.match(plain, /Windows가 막았어요/);
+  assert.match(plain, /spawn EPERM/);
+  assert.match(plain, /백신/);
+  assert.match(plain, /npm으로 설치하세요/);
+  assert.doesNotMatch(plain, /Microsoft Store/);
+  const store = launchFailureMessage('codex', 'spawn EPERM', { bin: String.raw`C:\Program Files\WindowsApps\OpenAI.Codex_1_x64__a\app\resources\codex.exe` });
+  assert.match(store, /Microsoft Store/);
+  assert.doesNotMatch(store, /다른 방법/, '설치 방법을 안 주면 그 줄은 없다');
+  assert.match(launchFailureMessage('claude', 'spawn EACCES'), /Windows가 막았어요/);
+});
+
+test('실행 실패 안내: 파일이 없으면 경로 확인을, 그 밖의 오류는 원래 메시지를 보여 준다', () => {
+  assert.match(launchFailureMessage('gemini', 'spawn gemini ENOENT', { bin: String.raw`C:\x\gemini.cmd` }), /찾을 수 없어요.*gemini\.cmd.*경로를 확인/);
+  assert.equal(launchFailureMessage('codex', 'something odd'), 'codex 실행에 실패했어요: something odd');
 });
