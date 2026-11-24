@@ -64,6 +64,7 @@ export function createConfig({ store, personas, userDataDir, env = process.env }
       return {
         path: opt(id, 'path') || env.AIPET_CLAUDE_PATH || '',
         configDir: opt(id, 'configDir'),
+        model: opt(id, 'model'),
         tools: conn(id).options.tools !== false,
         workDir: this.workDir(),
         persona: persona(id),

@@ -38,6 +38,19 @@ export function parseAnthropicModels(json) {
     .map((/** @type {any} */ m) => ({ value: m.id, label: typeof m.display_name === 'string' && m.display_name ? m.display_name : m.id }));
 }
 
+/**
+ * Claude Code: 모델 목록을 물어볼 방법이 없다(로그인한 계정으로는 Models API를 쓸 수 없다). `--model`이 받아 주는 별명(opus, sonnet,
+ * haiku: 그때그때 최신 모델)과 널리 쓰는 정확한 이름을 적어 두고, 다른 것은 직접 입력하게 한다.
+ */
+export const CLAUDE_KNOWN_MODELS = /** @type {ModelOption[]} */ ([
+  { value: 'opus', label: 'Opus — 가장 강력 (항상 최신)' },
+  { value: 'sonnet', label: 'Sonnet — 균형 (항상 최신)' },
+  { value: 'haiku', label: 'Haiku — 빠르고 저렴 (항상 최신)' },
+  { value: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+  { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
+  { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+]);
+
 /** Gemini CLI: 모델 목록을 물어볼 방법이 없다. 널리 쓰는 이름만 적어 두고, 다른 것은 직접 입력하게 한다. */
 export const GEMINI_KNOWN_MODELS = /** @type {ModelOption[]} */ ([
   { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },

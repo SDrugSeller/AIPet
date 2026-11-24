@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
 import { claudeModel, describeModel } from './modelInfo.js';
+import { CLAUDE_KNOWN_MODELS } from './modelList.js';
 import { cleanEnv, findOnPath, isFile, isWin, killTree, launchFailureMessage, readLines, run, spawnCli } from './cli.js';
 
 const exe = isWin ? '.exe' : '';
@@ -159,7 +160,7 @@ export function translateClaudeMessage(msg, st) {
 
 /**
  * @param {{
- *   getConfig: () => { path: string, configDir?: string, tools: boolean, workDir: string, persona?: string },
+ *   getConfig: () => { path: string, configDir?: string, model?: string, tools: boolean, workDir: string, persona?: string },
  *   metaDir: string,
  * }} opts
  *   workDir: 에이전트가 접근하는 작업 폴더. CLI는 항상 여기서 실행된다.
@@ -176,13 +177,16 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   let sessionKey = '';
   /** @type {import('node:child_process').ChildProcess | null} */
   let child = null;
-  /** 마지막 대화에서 CLI가 알려 준 실제 모델 */
+  /** 마지막 대화에서 CLI가 알려 준 실제 모델, 그리고 그때의 "모델" 설정 (설정을 바꾸면 이전 대화의 값은 더 이상 맞지 않는다) */
   let usedModel = '';
+  let usedFor = '';
   /** @type {StreamState | null} */
   let current = null;
   let aborted = false;
 
   /** 계정을 분리하려면 연결마다 다른 설정 폴더를 CLI에 알려 준다. @param {{ configDir?: string }} cfg */
+  /** 마지막 대화에서 알게 된 실제 모델 (그 뒤 "모델" 설정을 바꿨으면 null) */
+  const actualModel = () => (usedModel && usedFor === (getConfig().model ?? '') ? { name: usedModel, source: /** @type {const} */ ('chat') } : null);
   const envFor = (cfg) => (cfg.configDir ? { CLAUDE_CONFIG_DIR: cfg.configDir } : {});
 
   /** @param {unknown} obj */
@@ -193,6 +197,10 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   return {
     id: 'claude-code',
     label: 'Claude Code',
+
+    async listModels() {
+      return CLAUDE_KNOWN_MODELS;
+    },
 
     async detect() {
       const cfg = getConfig();
@@ -226,11 +234,11 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
       } catch {
         // 상태를 해석할 수 없으면 일단 사용 가능으로 두고, 실제 요청에서 오류를 보여 준다.
       }
-      const model = usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : claudeModel({ env: { ...process.env, ...env } });
+      const model = actualModel() ?? claudeModel({ optionModel: cfg.model, env: { ...process.env, ...env } });
       return { ok: true, model, info: `${info}\n모델: ${describeModel(model, { unknownHint: '계정에 맞춰 Claude Code가 정해요 (대화를 시작하면 실제 모델이 표시돼요)' })}` };
     },
 
-    currentModel: () => (usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : null),
+    currentModel: actualModel,
 
     send(msg) {
       const queue = createQueue();
@@ -246,7 +254,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         fs.mkdirSync(cfg.workDir, { recursive: true });
         fs.mkdirSync(metaDir, { recursive: true });
         const systemPrompt = buildSystemPrompt(cfg.persona, cfg.tools);
-        const key = JSON.stringify([cfg.workDir, cfg.configDir ?? '', cfg.tools, systemPrompt]);
+        const key = JSON.stringify([cfg.workDir, cfg.configDir ?? '', cfg.tools, cfg.model ?? '', systemPrompt]);
         const personaFile = path.join(metaDir, 'system-prompt.txt');
         fs.writeFileSync(personaFile, systemPrompt, 'utf8');
 
@@ -262,6 +270,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
           '--append-system-prompt-file', personaFile,
         ];
         if (!cfg.tools) args.push('--tools', ''); // 도구를 모두 끈 대화 전용 모드
+        if (cfg.model) args.push('--model', cfg.model); // 비우면 Claude Code가 계정에 맞춰 정한다
 
         // 이어 말할 세션이 있어도 말투/도구/폴더/계정이 바뀌었으면 이을 수 없다. 조용히 새 대화가 되지 않게 표시를 남긴다.
         if (sessionId && sessionKey !== key) {
@@ -303,7 +312,10 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
               return;
             }
             for (const ev of translateClaudeMessage(m, st)) queue.push(ev);
-            if (st.model) usedModel = st.model;
+            if (st.model) {
+              usedModel = st.model;
+              usedFor = getConfig().model ?? '';
+            }
             if (st.finished) c.stdin?.end(); // 한 번의 대화가 끝나면 CLI가 종료되도록 입력을 닫는다
           };
 

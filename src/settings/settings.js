@@ -70,6 +70,7 @@ function option(value, text) {
 const FIELDS = /** @type {Record<string, { key: string, type: 'bool' | 'text' | 'dir' | 'key', label: string, hint?: string, placeholder?: string }[]>} */ ({
   'claude-code': [
     { key: 'tools', type: 'bool', label: '파일·명령 도구 사용', hint: '(위험한 동작은 매번 허용 여부를 물어요)' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 계정에 맞춰 Claude Code가 정해요. 목록에서 고르거나 직접 입력해요)', placeholder: '예: sonnet' },
     { key: 'path', type: 'text', label: 'claude 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
     { key: 'configDir', type: 'dir', label: '계정 설정 폴더', hint: '(여러 계정을 쓰려면 캐릭터마다 다른 폴더를 정해요. 비우면 기본 로그인 계정)' },
   ],

@@ -362,3 +362,29 @@ out({ type: 'turn.completed', usage: {} });
   a.reset?.();
   assert.equal(text(await collect(a, '세 번째')), 'NO_HISTORY');
 });
+
+test('claude: 모델을 지정하면 --model을 붙이고, 비우면 붙이지 않는다. 실제 모델은 설정을 바꾸기 전까지만 보여 준다', { skip }, async () => {
+  const { cmd } = fakeCli(`
+${readFirstLine}
+const out = (o) => console.log(JSON.stringify(o));
+const i = process.argv.indexOf('--model');
+const asked = i >= 0 ? process.argv[i + 1] : '';
+out({ type: 'system', subtype: 'init', session_id: 's-1', model: asked ? 'claude-' + asked + '-5-5' : 'claude-default-5-5' });
+const reply = 'asked=' + (asked || '(없음)');
+out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } } });
+out({ type: 'result', subtype: 'success', is_error: false, session_id: 's-1', result: reply });
+`);
+  const work = tmpWork();
+  let model = '';
+  const a = createClaudeCodeAdapter({ getConfig: () => ({ path: cmd, configDir: '', model, tools: false, workDir: work }), metaDir: path.join(work, 'm') });
+  assert.equal(a.currentModel?.(), null, '대화 전에는 실제 모델을 모른다');
+  assert.match(text(await collect(a, '안녕')), /asked=\(없음\)/);
+  assert.deepEqual(a.currentModel?.(), { name: 'claude-default-5-5', source: 'chat' });
+  model = 'sonnet';
+  assert.equal(a.currentModel?.(), null, '모델 설정을 바꾸면 이전 대화에서 알게 된 모델은 더 이상 맞지 않는다');
+  assert.match(text(await collect(a, '또')), /asked=sonnet/);
+  assert.deepEqual(a.currentModel?.(), { name: 'claude-sonnet-5-5', source: 'chat' });
+  const d = await a.detect();
+  assert.deepEqual(d.model, { name: 'claude-sonnet-5-5', source: 'chat' });
+  assert.ok((await a.listModels?.())?.some((m) => m.value === 'opus'));
+});

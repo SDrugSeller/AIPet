@@ -20,8 +20,8 @@ export const KINDS = {
   'claude-code': {
     label: 'Claude Code',
     tools: true,
-    optionTypes: { path: 'str', configDir: 'str', tools: 'bool' },
-    defaults: { path: '', configDir: '', tools: true },
+    optionTypes: { path: 'str', configDir: 'str', tools: 'bool', model: 'str' },
+    defaults: { path: '', configDir: '', tools: true, model: '' },
   },
   'codex-cli': {
     label: 'Codex CLI',

@@ -6,7 +6,7 @@
 //   option   이 연결의 "모델" 칸에 적은 값
 //   app      API 연결: AIPet이 요청마다 보내는 모델 (칸이 비었으면 앱의 기본 모델)
 //   chat     마지막 대화에서 CLI가 알려 준 실제 모델 (Claude Code는 대화 시작 때 모델을 알려 준다)
-//   config   CLI의 설정 파일에 적힌 값 (Codex ~/.codex/config.toml, Gemini ~/.gemini/settings.json, Claude ~/.claude/settings.json)
+//   config   CLI의 설정 파일이나 환경변수에 적힌 값 (Codex ~/.codex/config.toml, Gemini ~/.gemini/settings.json, ANTHROPIC_MODEL 등)
 //   catalog  Codex의 모델 목록에서 맨 앞에 보이는 모델 = 기본값으로 추정 (확실하지 않아 "추정"이라고 알린다)
 //   default  알 수 없음: CLI가 실행할 때 정한다
 import fs from 'node:fs';
@@ -113,21 +113,15 @@ export function geminiModel({ optionModel = '', env = process.env, readFile = (p
 }
 
 /**
- * Claude Code가 쓸 모델(대화하기 전): 환경변수 ANTHROPIC_MODEL → ~/.claude/settings.json의 model. 없으면 계정에 맞춰 CLI가 정한다.
+ * Claude Code가 쓸 모델(대화하기 전): 연결 설정 → 환경변수 ANTHROPIC_MODEL. 없으면 계정에 맞춰 CLI가 정한다.
+ * 주의: AIPet은 사용자 전역 설정(~/.claude/settings.json)을 읽지 않게 하고(--setting-sources project,local) Claude를 실행하므로,
+ * 그 파일의 model 값은 AIPet에서는 적용되지 않는다. 그래서 이 파일은 근거로 쓰지 않는다.
  * 대화를 시작하면 CLI가 실제 모델을 알려 주므로(source 'chat') 그쪽이 우선한다.
- * @param {{ env?: NodeJS.ProcessEnv, readFile?: (p: string) => string }} p
+ * @param {{ optionModel?: string, env?: NodeJS.ProcessEnv }} [p]
  * @returns {ModelInfo}
  */
-export function claudeModel({ env = process.env, readFile = (p) => fs.readFileSync(p, 'utf8') } = {}) {
+export function claudeModel({ optionModel = '', env = process.env } = {}) {
+  if (optionModel) return { name: optionModel, source: 'option' };
   if (env.ANTHROPIC_MODEL) return { name: env.ANTHROPIC_MODEL, source: 'config' };
-  const text = tryRead(path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'), readFile);
-  if (text) {
-    try {
-      const name = JSON.parse(text)?.model;
-      if (typeof name === 'string' && name) return { name, source: 'config' };
-    } catch {
-      // 깨진 설정 파일은 없는 것으로 본다
-    }
-  }
   return { name: '', source: 'default' };
 }

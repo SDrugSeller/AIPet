@@ -98,8 +98,10 @@ export function createGeminiCliAdapter({ getConfig }) {
   let history = [];
   /** @type {import('node:child_process').ChildProcess | null} */
   let child = null;
-  /** 마지막 대화에서 CLI가 알려 준 실제 모델 */
+  /** 마지막 대화에서 CLI가 알려 준 실제 모델, 그리고 그때의 "모델" 설정 */
   let usedModel = '';
+  let usedFor = '';
+  const actualModel = () => (usedModel && usedFor === (getConfig().model ?? '') ? { name: usedModel, source: /** @type {const} */ ('chat') } : null);
   let aborted = false;
 
   return {
@@ -128,11 +130,11 @@ export function createGeminiCliAdapter({ getConfig }) {
       const authLine = auth
         ? `인증: ${auth}${auth === '로그인된 Google 계정' ? ' (개인 계정은 2026-06-18부터 Gemini CLI를 쓸 수 없어요 — 안 되면 GEMINI_API_KEY를 쓰세요)' : ''}`
         : '로그인 상태를 확인하지 못했어요 (안 되면 터미널에서 gemini로 로그인하거나 GEMINI_API_KEY를 설정해 주세요)';
-      const model = usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : geminiModel({ optionModel: cfg.model });
+      const model = actualModel() ?? geminiModel({ optionModel: cfg.model });
       return { ok: true, model, info: `gemini ${v.stdout.trim()} · ${bin}\n${authLine}\n모델: ${describeModel(model, { unknownHint: 'Gemini CLI가 자동으로 골라요 (대화를 시작하면 실제 모델이 표시돼요)' })}\n읽기 전용(plan 모드)으로 실행돼요` };
     },
 
-    currentModel: () => (usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : null),
+    currentModel: actualModel,
 
     send(msg) {
       const queue = createQueue();
@@ -168,7 +170,10 @@ export function createGeminiCliAdapter({ getConfig }) {
             return;
           }
           for (const ev of translateGeminiLine(m, st)) queue.push(ev);
-          if (st.model) usedModel = st.model;
+          if (st.model) {
+            usedModel = st.model;
+            usedFor = getConfig().model ?? '';
+          }
         });
         c.stderr?.setEncoding('utf8').on('data', (d) => (stderr = (stderr + d).slice(-2000)));
         c.on('error', (e) => {

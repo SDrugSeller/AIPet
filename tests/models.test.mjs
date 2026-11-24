@@ -4,7 +4,7 @@ import test from 'node:test';
 import { translateClaudeMessage } from '../src/main/agent/claudeCodeAdapter.js';
 import { translateGeminiLine } from '../src/main/agent/geminiCliAdapter.js';
 import { claudeModel, codexModel, describeModel, geminiModel, pickCatalogDefault, topLevelTomlString } from '../src/main/agent/modelInfo.js';
-import { GEMINI_KNOWN_MODELS, parseAnthropicModels, parseCodexCatalog, parseOpenAIModels } from '../src/main/agent/modelList.js';
+import { CLAUDE_KNOWN_MODELS, GEMINI_KNOWN_MODELS, parseAnthropicModels, parseCodexCatalog, parseOpenAIModels } from '../src/main/agent/modelList.js';
 
 const CATALOG = JSON.stringify({
   models: [
@@ -51,9 +51,10 @@ test('geminiModel / claudeModel: 설정 파일과 환경변수에서 알아내�
   assert.deepEqual(geminiModel({ env: {}, readFile: read('{"model":"flash"}') }), { name: 'flash', source: 'config' });
   assert.deepEqual(geminiModel({ env: { GEMINI_MODEL: 'env-model' }, readFile: read('{}') }), { name: 'env-model', source: 'config' });
   assert.deepEqual(geminiModel({ env: {}, readFile: read('깨진 파일') }), { name: '', source: 'default' });
-  assert.deepEqual(claudeModel({ env: { ANTHROPIC_MODEL: 'claude-x' }, readFile: read('{}') }), { name: 'claude-x', source: 'config' });
-  assert.deepEqual(claudeModel({ env: {}, readFile: read('{"model":"opus"}') }), { name: 'opus', source: 'config' });
-  assert.deepEqual(claudeModel({ env: {}, readFile: () => { throw new Error('없음'); } }), { name: '', source: 'default' });
+  assert.deepEqual(claudeModel({ optionModel: 'sonnet', env: { ANTHROPIC_MODEL: 'claude-x' } }), { name: 'sonnet', source: 'option' });
+  assert.deepEqual(claudeModel({ env: { ANTHROPIC_MODEL: 'claude-x' } }), { name: 'claude-x', source: 'config' });
+  // AIPet은 ~/.claude/settings.json을 읽지 않게 하고 Claude를 실행하므로, 그 파일의 model은 근거로 쓰지 않는다
+  assert.deepEqual(claudeModel({ env: {} }), { name: '', source: 'default' });
 });
 
 test('describeModel: 알아낸 방법을 함께 보여 주고, 모르면 모른다고 숨기지 않는다', () => {
@@ -90,4 +91,6 @@ test('고를 수 있는 모델 목록: 서버·API 응답에서 이름들을 뽑
     { value: 'claude-haiku-5-5', label: 'claude-haiku-5-5' },
   ]);
   assert.ok(GEMINI_KNOWN_MODELS.length >= 3 && GEMINI_KNOWN_MODELS.every((m) => m.value && m.label));
+  assert.deepEqual(CLAUDE_KNOWN_MODELS.slice(0, 3).map((m) => m.value), ['opus', 'sonnet', 'haiku'], 'Claude Code는 별명이 앞에 온다');
+  assert.ok(CLAUDE_KNOWN_MODELS.every((m) => m.value && m.label));
 });
