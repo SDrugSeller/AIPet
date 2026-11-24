@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { claudeModel, describeModel } from './modelInfo.js';
 import { cleanEnv, findOnPath, isFile, isWin, killTree, launchFailureMessage, readLines, run, spawnCli } from './cli.js';
 
 const exe = isWin ? '.exe' : '';
@@ -65,6 +66,7 @@ const LOGGED_OUT = /not logged in|please run \/login|invalid (api key|authentica
  * @typedef {{
  *   sawDelta: boolean, finished: boolean, status: string | null, sessionId: string | null,
  *   requests?: Map<string, any>,
+ *   model?: string,
  *   resumed?: boolean, sessionLost?: boolean, failed?: boolean, apiError?: string, syntheticText?: string,
  * }} StreamState
  *   resumed: 이어서 말하려고 --resume을 붙였다 / sessionLost: 이어 말하려던 세션을 CLI가 찾지 못했다
@@ -86,6 +88,10 @@ export function translateClaudeMessage(msg, st) {
   };
 
   switch (msg?.type) {
+    case 'system':
+      // 대화를 시작할 때 CLI가 실제로 쓸 모델을 알려 준다 (계정에 맞춰 CLI가 고른 값 포함)
+      if (msg.subtype === 'init' && typeof msg.model === 'string' && msg.model && msg.model !== '<synthetic>') st.model = msg.model;
+      break;
     case 'stream_event': {
       const e = msg.event;
       if (e?.type === 'content_block_start') {
@@ -170,6 +176,8 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
   let sessionKey = '';
   /** @type {import('node:child_process').ChildProcess | null} */
   let child = null;
+  /** 마지막 대화에서 CLI가 알려 준 실제 모델 */
+  let usedModel = '';
   /** @type {StreamState | null} */
   let current = null;
   let aborted = false;
@@ -218,8 +226,11 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
       } catch {
         // 상태를 해석할 수 없으면 일단 사용 가능으로 두고, 실제 요청에서 오류를 보여 준다.
       }
-      return { ok: true, info };
+      const model = usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : claudeModel({ env: { ...process.env, ...env } });
+      return { ok: true, model, info: `${info}\n모델: ${describeModel(model, { unknownHint: '계정에 맞춰 Claude Code가 정해요 (대화를 시작하면 실제 모델이 표시돼요)' })}` };
     },
+
+    currentModel: () => (usedModel ? { name: usedModel, source: /** @type {const} */ ('chat') } : null),
 
     send(msg) {
       const queue = createQueue();
@@ -292,6 +303,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
               return;
             }
             for (const ev of translateClaudeMessage(m, st)) queue.push(ev);
+            if (st.model) usedModel = st.model;
             if (st.finished) c.stdin?.end(); // 한 번의 대화가 끝나면 CLI가 종료되도록 입력을 닫는다
           };
 

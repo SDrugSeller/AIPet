@@ -25,6 +25,7 @@ const MAX_LOG = 20;
  *   notify?: () => void,
  *   onSelect?: (adapterId: string) => void,
  *   onTaskFinished?: (result: { ok: boolean, text: string }) => void,
+ *   onTurnEnd?: () => void,
  *   onLog?: (message: string) => void,
  *   preferred?: string | null,
  * }} opts
@@ -39,6 +40,7 @@ export function createAgentHost({
   notify,
   onSelect,
   onTaskFinished,
+  onTurnEnd,
   onLog = () => {},
   preferred = null,
 }) {
@@ -82,6 +84,8 @@ export function createAgentHost({
       reason: isEnabled(a.id) ? (detected.get(a.id)?.reason ?? '') : '사용 안 함',
       problem: isEnabled(a.id) ? (detected.get(a.id)?.problem ?? '') : '',
       info: detected.get(a.id)?.info ?? '',
+      /** 지금 쓰는 모델: 대화에서 CLI가 알려 준 실제 모델이 있으면 그것, 없으면 점검 때 알아낸 값 */
+      model: a.currentModel?.() ?? detected.get(a.id)?.model ?? null,
       selected: a.id === selected,
     }));
   }
@@ -299,6 +303,7 @@ export function createAgentHost({
       running = null;
       busy = false;
       emitState();
+      onTurnEnd?.(); // 대화에서 알게 된 실제 모델을 설정 화면에도 반영한다
       // 대화창을 닫아 둔 사이에 끝났다면 사용자는 결과를 못 봤으니 알린다. (중단한 경우는 제외)
       if (!open && !turn.aborted && turn.ok !== null) onTaskFinished?.({ ok: turn.ok, text: turn.text });
     }
@@ -309,6 +314,14 @@ export function createAgentHost({
   return {
     refresh,
     backends,
+    /** 이 연결의 "모델" 칸에 보여 줄, 고를 수 있는 모델 목록 (알아낼 수 없으면 빈 목록) @returns {Promise<import('./modelList.js').ModelOption[]>} */
+    async listModels() {
+      try {
+        return (await adapters[0]?.listModels?.()) ?? [];
+      } catch {
+        return [];
+      }
+    },
     snapshot,
     send,
 

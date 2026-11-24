@@ -508,3 +508,12 @@ input.conn-name:focus {
 #toolsDiagBtn {
   white-space: nowrap;
 }
+
+.model-line {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.model-line:empty {
+  display: none;
+}

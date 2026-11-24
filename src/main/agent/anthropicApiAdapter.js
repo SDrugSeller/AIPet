@@ -3,6 +3,7 @@
 // 대화 전용이다 (도구 없음). 키는 설정의 보안 저장소(또는 ANTHROPIC_API_KEY 환경변수)에서만 가져온다.
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { parseAnthropicModels } from './modelList.js';
 
 const MAX_HISTORY = 20;
 
@@ -51,6 +52,13 @@ export function createAnthropicApiAdapter({ getConfig, clientOptions }) {
     id: 'anthropic-api',
     label: 'Anthropic API',
 
+    async listModels() {
+      const cfg = getConfig();
+      if (!cfg.apiKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return [];
+      const page = await client().models.list({ limit: 50 }, { timeout: 10_000, maxRetries: 0 });
+      return parseAnthropicModels({ data: page.data });
+    },
+
     async detect() {
       const cfg = getConfig();
       if (!cfg.apiKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
@@ -59,7 +67,7 @@ export function createAnthropicApiAdapter({ getConfig, clientOptions }) {
       try {
         // 모델 조회는 토큰을 쓰지 않는다. 키와 모델 이름이 맞는지 한 번에 확인된다.
         const m = await client().models.retrieve(cfg.model, { timeout: 10_000, maxRetries: 0 });
-        return { ok: true, info: `모델: ${m.display_name ?? cfg.model} (${cfg.model})\n키: ${cfg.apiKey ? '설정에 저장된 키' : '환경변수'}` };
+        return { ok: true, model: { name: cfg.model, source: 'app' }, info: `모델: ${m.display_name ?? cfg.model} (${cfg.model})\n키: ${cfg.apiKey ? '설정에 저장된 키' : '환경변수'}` };
       } catch (e) {
         return { ok: false, reason: friendlyAnthropicError(e) };
       }

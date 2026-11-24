@@ -75,20 +75,20 @@ const FIELDS = /** @type {Record<string, { key: string, type: 'bool' | 'text' | 
   ],
   'codex-cli': [
     { key: 'path', type: 'text', label: 'codex 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
-    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Codex 기본값)', placeholder: '예: gpt-5-codex' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Codex 기본값. 목록에서 고르거나 직접 입력해요)', placeholder: '예: gpt-5-codex' },
   ],
   'gemini-cli': [
     { key: 'path', type: 'text', label: 'gemini 실행 파일 경로', hint: '(비우면 자동 탐지)', placeholder: '자동 탐지' },
-    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Gemini 기본값)', placeholder: '예: gemini-2.5-pro' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 Gemini 기본값. 자주 쓰는 모델을 고르거나 직접 입력해요)', placeholder: '예: gemini-2.5-pro' },
   ],
   'anthropic-api': [
-    { key: 'model', type: 'text', label: '모델', hint: '(더 저렴한 모델: claude-sonnet-5-5, claude-haiku-5-5)', placeholder: 'claude-opus-5-5' },
+    { key: 'model', type: 'text', label: '모델', hint: '(키가 확인되면 쓸 수 있는 모델이 목록에 나와요. 더 저렴한 모델: claude-sonnet-5-5, claude-haiku-5-5)', placeholder: 'claude-opus-5-5' },
     { key: 'key', type: 'key', label: 'API 키', hint: '(OS 보안 저장소에 암호화해 저장돼요)' },
     { key: 'baseUrl', type: 'text', label: 'API 주소', hint: '(프록시를 쓸 때만. 비우면 기본값)', placeholder: 'https://api.anthropic.com' },
   ],
   'openai-compat': [
     { key: 'baseUrl', type: 'text', label: '서버 주소', placeholder: 'http://127.0.0.1:11434/v1' },
-    { key: 'model', type: 'text', label: '모델', hint: '(비우면 서버의 첫 모델)', placeholder: '예: llama3.2' },
+    { key: 'model', type: 'text', label: '모델', hint: '(비우면 서버의 첫 모델. 서버에 있는 모델이 목록에 나와요)', placeholder: '예: llama3.2' },
     { key: 'key', type: 'key', label: 'API 키', hint: '(선택, OS 보안 저장소에 암호화해 저장돼요)' },
   ],
 });
@@ -452,8 +452,9 @@ function buildCard(conn) {
   root.append(head);
 
   const info = el('pre', 'info');
+  const modelLine = el('p', 'model-line');
   const reason = el('p', 'reason');
-  root.append(info, reason);
+  root.append(info, modelLine, reason);
   // Codex: 못 찾았을 때 앱이 대신 설치해 주고, 로그인도 도와 주는 상자
   const setup = conn.kind === 'codex-cli' ? buildSetupBox(id) : null;
   if (setup) root.append(setup.root);
@@ -492,6 +493,9 @@ function buildCard(conn) {
   /** @type {Record<string, HTMLInputElement>} */
   const inputs = {};
   let keyStatus = /** @type {HTMLElement | null} */ (null);
+  /** "모델" 칸의 콤보박스 목록 (고를 수 있는 모델) */
+  let modelDatalist = /** @type {HTMLDataListElement | null} */ (null);
+  let modelsKey = '';
   for (const f of FIELDS[conn.kind] ?? []) {
     if (f.type === 'bool') {
       const lab = el('label', 'row');
@@ -544,6 +548,14 @@ function buildCard(conn) {
       if (f.placeholder) input.placeholder = f.placeholder;
       debounced(input, (v) => patchConnection(id, (c) => (c.options[f.key] = v)));
       inputs[f.key] = input;
+      if (f.key === 'model') {
+        // 직접 입력도 되고, 아래로 펼치면 고를 수 있는 모델이 나오는 콤보박스
+        modelDatalist = /** @type {HTMLDataListElement} */ (el('datalist'));
+        modelDatalist.id = `models-${id}`;
+        input.setAttribute('list', modelDatalist.id);
+        input.autocomplete = 'off';
+        lab.append(modelDatalist);
+      }
       if (f.type === 'dir') {
         const inline = el('div', 'inline');
         inline.append(input);
@@ -627,8 +639,30 @@ function buildCard(conn) {
     const checking = c.enabled && !!st && !st.checked;
     badge.textContent = !c.enabled ? '꺼짐' : !st ? '시작 중…' : checking ? '확인 중…' : st.available ? '사용 가능' : '사용 불가';
     badge.className = `badge ${!c.enabled || !st || checking ? '' : st.available ? 'ok' : 'bad'}`;
-    info.textContent = c.enabled && st?.available ? st.info : '';
+    // "모델:" 줄은 대화를 하면 바뀔 수 있어서 따로(아래 modelLine) 보여 준다
+    info.textContent = c.enabled && st?.available ? st.info.split('\n').filter((/** @type {string} */ l) => !l.startsWith('모델')).join('\n') : '';
+    modelLine.textContent = c.enabled && st?.available && st.modelText ? `사용 모델: ${st.modelText}` : '';
     reason.textContent = c.enabled && st?.checked && !st.available ? st.reason : '';
+
+    // 연결이 되면 고를 수 있는 모델 목록을 한 번 읽어 와서 콤보박스에 채운다 (경로나 주소가 바뀌면 다시)
+    if (modelDatalist && c.enabled && st?.available) {
+      const key = `${c.id}|${c.options.path ?? ''}|${c.options.baseUrl ?? ''}`;
+      if (key !== modelsKey) {
+        modelsKey = key;
+        const list = modelDatalist;
+        void api.models(c.id).then((/** @type {{ value: string, label: string }[] | null} */ items) => {
+          if (!items) return;
+          list.replaceChildren(
+            ...items.map((m) => {
+              const o = document.createElement('option');
+              o.value = m.value;
+              if (m.label && m.label !== m.value) o.label = m.label;
+              return o;
+            }),
+          );
+        });
+      }
+    }
 
     if (keyStatus) {
       const envKey = c.kind === 'anthropic-api' ? state.keyFromEnv.anthropic : state.keyFromEnv.openai;
@@ -636,6 +670,12 @@ function buildCard(conn) {
     }
     for (const [key, input] of Object.entries(inputs)) {
       if (key === 'baseUrl' && c.kind === 'openai-compat') input.placeholder = state.defaults.openaiBaseUrl;
+      // 모델 칸을 비워 두면 CLI가 고르는데, 지금 실제로 쓰는(또는 쓸 것으로 보이는) 모델을 칸 안에 보여 준다
+      if (key === 'model') {
+        const original = FIELDS[c.kind]?.find((f) => f.key === 'model')?.placeholder ?? '';
+        const cur = st?.model?.name;
+        input.placeholder = cur && !c.options.model ? `현재: ${cur}` : original;
+      }
     }
   }
 

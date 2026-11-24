@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('aipetSettings', {
   toolsLogin: (/** @type {string} */ connectionId) => invoke('settings:tools-login', connectionId),
   toolsCancelLogin: () => invoke('settings:tools-cancel-login'),
   toolsOpenLoginUrl: (/** @type {string} */ url) => invoke('settings:tools-open-login-url', url),
+  /** 연결의 "모델" 칸에 보여 줄 고를 수 있는 모델 목록 */
+  models: (/** @type {string} */ connectionId) => invoke('settings:models', connectionId),
   toolsInfo: () => invoke('settings:tools-info'),
   toolsReinstall: (/** @type {string} */ tool) => invoke('settings:tools-reinstall', tool),
   toolsRemove: (/** @type {'codex' | 'all'} */ scope) => invoke('settings:tools-remove', scope),

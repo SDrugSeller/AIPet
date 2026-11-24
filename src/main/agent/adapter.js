@@ -19,6 +19,7 @@
  * @property {boolean} ok
  * @property {string} [reason]  사용할 수 없을 때 이유와 해결 안내
  * @property {'not-found' | 'bad-path' | 'launch-failed' | 'not-logged-in'} [problem]  사용할 수 없는 이유의 종류 (설정 화면이 "설치하기"/"로그인하기" 버튼을 보여 주는 데 쓴다)
+ * @property {import('./modelInfo.js').ModelInfo} [model]  지금 쓰는 모델과 그것을 알아낸 방법 (설정 화면에 보여 준다)
  * @property {string} [info]    어떤 계정/주소로 동작하는지 (설정 화면에 표시, DESIGN.md 4.3)
  */
 
@@ -27,6 +28,8 @@
  * @property {string} id
  * @property {string} label  사용자에게 보이는 이름
  * @property {() => Promise<DetectResult>} detect  설치/로그인/서버 연결 점검
+ * @property {() => Promise<import('./modelList.js').ModelOption[]>} [listModels]  "모델" 칸에 보여 줄 고를 수 있는 모델 목록
+ * @property {() => import('./modelInfo.js').ModelInfo | null} [currentModel]  대화에서 CLI가 알려 준 실제 모델 (아직 없으면 null)
  * @property {(msg: string, ctx?: object) => AsyncIterable<AgentEvent>} send
  * @property {(id: string, allow: boolean, message?: string) => void} respondPermission  tool_request에 대한 사용자 응답
  * @property {() => void} abort

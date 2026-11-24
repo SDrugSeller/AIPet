@@ -2,6 +2,7 @@
 import { BrowserWindow, Menu, app, ipcMain, powerMonitor, screen, shell } from 'electron';
 import { KINDS } from '../shared/connections.js';
 import { createAgentHost } from './agent/agentHost.js';
+import { describeModel } from './agent/modelInfo.js';
 import { createAdapterFor } from './agent/factory.js';
 import { bodyMetrics, computePerch } from './perch.js';
 import { createPetEngine } from './petEngine.js';
@@ -447,6 +448,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
       },
       // 대화창을 닫아 둔 사이 응답이 끝났다. 완료 모션(done)이 보이도록 잠깐 뒤에 이 펫이 알린다.
       onTaskFinished: (r) => setTimeout(() => notifier.onTaskDone({ ...r, petId: pet.id }), 1000),
+      onTurnEnd: () => emitStatus(),
     });
 
     pets.set(conn.id, pet);
@@ -898,13 +900,20 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     await Promise.all([...pets.values()].map((p) => refreshPet(p)));
   }
 
+  /** 모델 이름을 알 수 없을 때 설정 화면에 보여 줄 말 (종류마다 다르다) */
+  const MODEL_UNKNOWN_HINT = /** @type {Record<string, string>} */ ({
+    'claude-code': '계정에 맞춰 Claude Code가 정해요 (대화를 시작하면 실제 모델이 표시돼요)',
+    'gemini-cli': 'Gemini CLI가 자동으로 골라요 (대화를 시작하면 실제 모델이 표시돼요)',
+    'codex-cli': '실행할 때 Codex가 정해요 (확인할 수 없어요)',
+  });
+
   /** 연결 id → 점검 결과 (설정 창에 보여 준다). 펫이 없는(꺼진) 연결은 포함되지 않는다. */
   function statuses() {
-    /** @type {Record<string, { checked: boolean, available: boolean, reason: string, info: string, problem: string }>} */
+    /** @type {Record<string, { checked: boolean, available: boolean, reason: string, info: string, problem: string, model: { name: string, source: string } | null, modelText: string }>} */
     const out = {};
     for (const [id, pet] of pets) {
       const b = pet.host.backends()[0];
-      out[id] = { checked: !!b?.checked, available: !!b?.available, reason: b?.reason ?? '', info: b?.info ?? '', problem: b?.problem ?? '' };
+      out[id] = { checked: !!b?.checked, available: !!b?.available, reason: b?.reason ?? '', info: b?.info ?? '', problem: b?.problem ?? '', model: b?.model ?? null, modelText: b?.model ? describeModel(b.model, { unknownHint: MODEL_UNKNOWN_HINT[pet.conn.kind] }) : '' };
     }
     return out;
   }
@@ -977,6 +986,8 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     /** 화면에 있는 펫들 (표시 순서) */
     listPets: () => [...pets.values()].map((p) => ({ id: p.id, name: p.conn.name, kind: p.conn.kind, persona: p.conn.persona })),
     statuses,
+    /** 연결 하나의 "모델" 칸에 보여 줄 고를 수 있는 모델 목록 (그 연결의 펫이 없으면 빈 목록) @param {string} id */
+    listModels: (id) => pets.get(id)?.host.listModels() ?? Promise.resolve([]),
     refreshAll,
     /** @param {string} id */
     refresh: (id) => {

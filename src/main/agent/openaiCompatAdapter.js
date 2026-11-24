@@ -2,6 +2,7 @@
 // OpenAI 호환 어댑터 (Ollama, LM Studio, OpenRouter 등). /chat/completions 스트리밍(SSE)을 AgentEvent로 변환한다.
 // 이 어댑터에는 도구 루프가 없다 (대화 전용). 도구는 API 어댑터(M6)에서 앱이 직접 게이트하며 구현한다.
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { parseOpenAIModels } from './modelList.js';
 
 const MAX_HISTORY = 20;
 
@@ -77,6 +78,13 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
     id: 'openai-compat',
     label: 'Ollama / OpenAI 호환',
 
+    async listModels() {
+      const base = baseOf();
+      if (!isHttpUrl(base)) return [];
+      const res = await fetchImpl(`${base}/models`, { headers: headers(), signal: AbortSignal.timeout(3000) });
+      return res.ok ? parseOpenAIModels(await res.json()) : [];
+    },
+
     async detect() {
       const base = baseOf();
       if (!isHttpUrl(base)) return { ok: false, reason: `주소가 올바르지 않아요: ${base}` };
@@ -90,7 +98,7 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
           if (!model) return { ok: false, reason: '사용할 수 있는 모델이 없어요. 예: ollama pull llama3.2' };
           detectedModels.set(base, model);
         }
-        return { ok: true, info: `${base}\n모델: ${model} · API 키: ${cfg.apiKey ? '사용' : '없음'}` };
+        return { ok: true, model: { name: model, source: cfg.model ? 'option' : 'catalog' }, info: `${base}\n모델: ${model} · API 키: ${cfg.apiKey ? '사용' : '없음'}` };
       } catch {
         return { ok: false, reason: `${base}에 연결할 수 없어요. Ollama(또는 호환 서버)를 실행해 주세요.` };
       }

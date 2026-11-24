@@ -205,6 +205,12 @@ export function createSettingsWindow({ store, config, personas, manager, tools, 
     return null; // API 연결은 외부 프로그램이 없어서 진단할 것이 없다
   });
 
+  /** 연결의 "모델" 칸에 보여 줄 고를 수 있는 모델 목록 (콤보박스) */
+  ipcMain.handle('settings:models', async (e, id) => {
+    if (!fromSettings(e) || typeof id !== 'string') return null;
+    return manager.listModels(id);
+  });
+
   ipcMain.handle('settings:tools-info', async (e) => {
     if (!fromSettings(e)) return null;
     return tools.info();

@@ -13,6 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
 import { privateCodexBinary } from '../tools/toolPaths.js';
+import { codexModel, describeModel } from './modelInfo.js';
+import { parseCodexCatalog } from './modelList.js';
 import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, launchFailureMessage, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
 
 /** 실행이 막혔을 때 안내할 다른 설치 방법 */
@@ -161,6 +163,12 @@ export function createCodexCliAdapter({ getConfig }) {
     id: 'codex-cli',
     label: 'Codex CLI',
 
+    async listModels() {
+      const bin = findCodexBinary(getConfig().path);
+      if (!bin) return [];
+      return parseCodexCatalog((await run(bin, ['debug', 'models'], 20000)).stdout);
+    },
+
     async detect() {
       const cfg = getConfig();
       const bin = findCodexBinary(cfg.path);
@@ -181,7 +189,9 @@ export function createCodexCliAdapter({ getConfig }) {
       const mode = cfg.write
         ? '작업 폴더 샌드박스에서 실행돼요 (파일 수정·명령 실행은 묻지 않고 진행, 작업 폴더 밖 쓰기와 네트워크는 차단)'
         : '읽기 전용으로 실행돼요 (파일을 바꾸지 않아요)';
-      return { ok: true, info: `${v.stdout.trim()} · ${bin}\n${status}\n${mode}` };
+      // 모델: 연결 설정 → Codex 설정 파일 → (둘 다 없으면) Codex의 모델 목록에서 기본값으로 추정
+      const model = await codexModel({ optionModel: cfg.model, catalog: async () => (await run(bin, ['debug', 'models'], 20000)).stdout });
+      return { ok: true, model, info: `${v.stdout.trim()} · ${bin}\n${status}\n모델: ${describeModel(model)}\n${mode}` };
     },
 
     send(msg) {
