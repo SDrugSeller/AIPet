@@ -50,6 +50,8 @@ export function createConfig({ store, personas, userDataDir, env = process.env }
         autoAllowShell: p.autoAllowShell,
         autoAllowFetch: p.autoAllowFetch,
         workDir: p.workDir || defaultWorkDir,
+        /** 대화에 첨부한 파일의 복사본이 있는 폴더: 읽기 전용 도구에만 열어 준다 */
+        readRoots: [path.join(userDataDir, 'attachments')],
       };
     },
 

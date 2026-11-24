@@ -1,7 +1,7 @@
 // @ts-check
 // sandbox 프리로드는 CommonJS여야 한다. 필요한 API만 contextBridge로 노출한다.
 // 펫이 여러 마리이므로 펫에 관한 요청은 모두 petId(연결 id)를 함께 보낸다.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 /** main → renderer 이벤트 구독 헬퍼 @param {string} channel @param {(payload: any) => void} cb */
 const on = (channel, cb) => {
@@ -24,6 +24,17 @@ contextBridge.exposeInMainWorld('aipet', {
   chatNew: (/** @type {string} */ petId) => ipcRenderer.send('chat:new', petId),
   /** 입력창을 눌렀다: 키보드 포커스가 필요하다 (권한 요청으로 자동으로 열린 말풍선일 때) */
   chatFocus: (/** @type {string} */ petId) => ipcRenderer.send('chat:focus', petId),
+  /** 대화창에 끌어다 놓은 파일의 경로 (파일 객체에서만 읽을 수 있다. 읽지 못하면 빈 문자열) */
+  pathOf: (/** @type {File} */ file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
+  /** 파일들을 대화에 첨부한다 (main이 복사한다). 안 되는 파일은 이유와 함께 돌려받는다 */
+  attachPaths: (/** @type {string} */ petId, /** @type {string[]} */ paths) => ipcRenderer.invoke('attach:add', petId, paths),
+  attachRemove: (/** @type {string} */ petId, /** @type {string} */ id) => ipcRenderer.send('attach:remove', petId, id),
   /** 도구 사용 승인 카드의 허용/거부 */
   permRespond: (/** @type {string} */ petId, /** @type {string} */ id, /** @type {boolean} */ allow) =>
     ipcRenderer.send('perm:respond', petId, id, allow),
@@ -41,6 +52,7 @@ contextBridge.exposeInMainWorld('aipet', {
   onAgentEvent: (/** @type {(e: any) => void} */ cb) => on('agent:event', cb),
   onNoticeShow: (/** @type {(n: any) => void} */ cb) => on('notice:show', cb),
   onNoticeHide: (/** @type {(n: any) => void} */ cb) => on('notice:hide', cb),
+  onAttachState: (/** @type {(s: any) => void} */ cb) => on('attach:state', cb),
   onPermRequest: (/** @type {(r: any) => void} */ cb) => on('perm:request', cb),
   onPermResolved: (/** @type {(r: any) => void} */ cb) => on('perm:resolved', cb),
 });

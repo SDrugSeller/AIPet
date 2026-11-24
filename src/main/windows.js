@@ -32,9 +32,10 @@ import { createWindowWatcher } from './windowWatcher.js';
  *   getMenuTemplate: (petId?: string) => Electron.MenuItemConstructorOptions[],
  *   openSettings: (tab?: string) => void,
  *   getToolSetup?: () => ReturnType<typeof import('./tools/toolSetup.js').createToolSetup> | null,
+ *   attachments: ReturnType<typeof import('./attachments.js').createAttachmentStore>,
  * }} opts
  */
-export function createOverlayManager({ preloadPath, rendererPath, debug, logging = false, log = () => {}, store, config, loadSkin, getMenuTemplate, openSettings, getToolSetup = () => null }) {
+export function createOverlayManager({ preloadPath, rendererPath, debug, logging = false, log = () => {}, store, config, loadSkin, getMenuTemplate, openSettings, getToolSetup = () => null, attachments }) {
   /** @type {Map<number, BrowserWindow>} displayId → 오버레이 창 */
   const windows = new Map();
 
@@ -115,6 +116,12 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   }
 
   /** 렌더러에 보낼 펫 한 마리의 정보 @param {Pet} pet */
+  /** 칩에 보여 줄 정보만 (파일 경로는 화면으로 보내지 않는다) @param {{ id: string, name: string, size: number, kind: string }} f */
+  const attachView = (f) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind });
+
+  /** 이 펫의 입력창 위 칩 목록을 화면에 알린다 @param {string} petId */
+  const pushAttach = (petId) => sendAll('attach:state', { petId, files: attachments.list(petId).map(attachView) });
+
   function descriptor(pet) {
     return {
       id: pet.id,
@@ -125,6 +132,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
       state: { ...pet.engine.pet },
       chat: pet.host.snapshot(),
       notice: pet.noticeInfo,
+      attach: attachments.list(pet.id).map(attachView),
     };
   }
 
@@ -476,6 +484,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     const pet = pets.get(id);
     if (!pet) return;
     pet.host.dispose();
+    void attachments.clear(id); // 이 연결의 첨부 복사본도 지운다
     pet.engine.dispose();
     if (pet.noticeTimer) clearTimeout(pet.noticeTimer);
     if (drag?.petId === id) stopDrag();
@@ -658,9 +667,30 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     pet.host.setOpen(!pet.host.isOpen);
   });
   ipcMain.on('chat:close', (e, petId) => petOf(e, petId)?.host.setOpen(false));
-  ipcMain.on('chat:new', (e, petId) => petOf(e, petId)?.host.newSession());
+  ipcMain.on('chat:new', (e, petId) => {
+    const pet = petOf(e, petId);
+    // 새 대화를 시작하면 이전 대화가 끝난 것이다: 첨부 파일의 복사본을 지운다
+    if (pet?.host.newSession()) void attachments.clear(pet.id).then(() => pushAttach(pet.id));
+  });
   ipcMain.on('chat:send', (e, petId, text) => {
-    if (typeof text === 'string') void petOf(e, petId)?.host.send(text);
+    const pet = petOf(e, petId);
+    if (!pet || typeof text !== 'string' || pet.host.snapshot().busy) return;
+    const files = attachments.takePending(pet.id);
+    if (!text.trim() && !files.length) return;
+    pushAttach(pet.id); // 보낸 첨부는 입력창에서 비운다 (복사본은 이 대화가 끝날 때까지 남는다)
+    void pet.host.send(text, { attachments: files });
+  });
+  // 대화창에 파일을 끌어다 놓았다: 복사해서 첨부하고, 안 되는 것은 이유를 돌려준다
+  ipcMain.handle('attach:add', async (e, petId, paths) => {
+    const pet = petOf(e, petId);
+    if (!pet || !Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) return null;
+    const r = await attachments.add(pet.id, paths, { kind: pet.conn.kind, tools: pet.conn.options.tools !== false });
+    pushAttach(pet.id);
+    return { rejected: r.rejected };
+  });
+  ipcMain.on('attach:remove', (e, petId, id) => {
+    const pet = petOf(e, petId);
+    if (pet && typeof id === 'string') void attachments.remove(pet.id, id).then(() => pushAttach(pet.id));
   });
   ipcMain.on('chat:abort', (e, petId) => petOf(e, petId)?.host.abort());
   // 권한 요청으로 자동으로 열린 말풍선에서 사용자가 입력창을 눌렀다: 이제 이 펫이 키보드 포커스를 받는다.

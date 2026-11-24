@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findCodexBinary } from './agent/codexCliAdapter.js';
+import { createAttachmentStore } from './attachments.js';
 import { createConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { buildMenuTemplate } from './menu.js';
@@ -117,7 +118,13 @@ if (!app.requestSingleInstanceLock()) {
         openLogs: logger ? () => void shell.openPath(logDir) : undefined,
       });
 
+    // 대화에 첨부한 파일의 복사본: 앱을 켤 때 남아 있는 것(PC가 대화 도중 꺼졌을 때 등)을 지우고, 끌 때도 지운다.
+    const attachments = createAttachmentStore({ root: path.join(userData, 'attachments'), getLimits: () => store.get().attachments });
+    attachments.clearAllSync();
+    app.on('will-quit', () => attachments.clearAllSync());
+
     manager = createOverlayManager({
+      attachments,
       preloadPath: path.join(here, '../preload/preload.cjs'),
       rendererPath: path.join(here, '../renderer/index.html'),
       debug,

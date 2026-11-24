@@ -30,7 +30,7 @@
  * @property {() => Promise<DetectResult>} detect  설치/로그인/서버 연결 점검
  * @property {() => Promise<import('./modelList.js').ModelOption[]>} [listModels]  "모델" 칸에 보여 줄 고를 수 있는 모델 목록
  * @property {() => import('./modelInfo.js').ModelInfo | null} [currentModel]  대화에서 CLI가 알려 준 실제 모델 (아직 없으면 null)
- * @property {(msg: string, ctx?: object) => AsyncIterable<AgentEvent>} send
+ * @property {(msg: string, ctx?: { attachments?: { name: string, path: string, size: number, kind: string }[] }) => AsyncIterable<AgentEvent>} send
  * @property {(id: string, allow: boolean, message?: string) => void} respondPermission  tool_request에 대한 사용자 응답
  * @property {() => void} abort
  * @property {() => void} [reset]  대화 맥락 초기화

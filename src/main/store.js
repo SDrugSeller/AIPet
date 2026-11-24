@@ -3,6 +3,7 @@
 // API 키 같은 비밀은 OS 키체인(Electron safeStorage)으로 암호화해서 저장하며, 렌더러에는 절대 보내지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
+import { ATTACH_CAPS, ATTACH_DEFAULTS } from '../shared/attachments.js';
 import { DOOR_PERCENT_MAX, DOOR_PERCENT_MIN } from '../shared/skinDoor.js';
 import { SLEEP_SPOT_DEFAULT, SLEEP_SPOT_MODES } from './sleepSpot.js';
 import { SLEEP_AFTER_DEFAULT_SEC, SLEEP_AFTER_MAX_SEC, SLEEP_AFTER_MIN_SEC } from '../shared/sleep.js';
@@ -76,6 +77,8 @@ export const DEFAULTS = {
   },
   /** 스킨별 크기 조정값 (스킨 폴더 이름 → 프레임 크기/표시 높이). 비어 있으면 skin.json 그대로 */
   skinTuning: /** @type {Record<string, { frameW?: number, frameH?: number, displayH?: number, doorPercent?: number }>} */ ({}),
+  /** 대화에 파일을 끌어다 놓아 첨부할 때의 제한 (코드의 상한을 넘지 못한다) */
+  attachments: { maxFileMb: ATTACH_DEFAULTS.maxFileMb, maxFiles: ATTACH_DEFAULTS.maxFiles },
   general: {
     launchAtLogin: false,
     /** 방해 금지: 먼저 말을 걸지 않고 알림 말풍선도 띄우지 않는다 */
@@ -149,6 +152,7 @@ const SPEC = {
     cooldownMin: int(1, 600),
     reminders,
   },
+  attachments: { maxFileMb: int(1, ATTACH_CAPS.maxFileMb), maxFiles: int(1, ATTACH_CAPS.maxFiles) },
   general: {
     launchAtLogin: isBool,
     doNotDisturb: isBool,

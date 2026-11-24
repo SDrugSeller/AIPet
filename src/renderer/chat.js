@@ -52,6 +52,9 @@ export function createChat(api, pet, layer, template) {
   const input = /** @type {HTMLTextAreaElement} */ (q('.input'));
   const sendBtn = /** @type {HTMLButtonElement} */ (q('.send'));
   const closeBtn = q('.close');
+  const chipsEl = q('.chips');
+  const attachMsg = q('.attach-msg');
+  const dropHint = q('.drop-hint');
   const newBtn = /** @type {HTMLButtonElement} */ (q('.newchat'));
   const noticeText = /** @type {HTMLElement} */ (notice.querySelector('.notice-text'));
   layer.append(el, notice);
@@ -77,6 +80,82 @@ export function createChat(api, pet, layer, template) {
 
   /** @param {HTMLElement} target */
   const raise = (target) => (target.style.zIndex = String(++zCounter));
+
+  // --- 파일 첨부 (대화창이 열려 있을 때, 이 대화창 위에 놓은 파일만 받는다) ---
+
+  /** 아직 보내지 않은 첨부: 입력창 위의 칩들 @type {{ id: string, name: string, size: number }[]} */
+  let attached = pet.attach ?? [];
+  /** @type {NodeJS.Timeout | undefined} */
+  let attachMsgTimer;
+
+  /** @param {number} bytes */
+  const sizeText = (bytes) => (bytes < 1048576 ? `${Math.max(1, Math.round(bytes / 1024))}KB` : `${(bytes / 1048576).toFixed(1)}MB`);
+
+  function renderChips() {
+    chipsEl.hidden = attached.length === 0;
+    chipsEl.replaceChildren(
+      ...attached.map((f) => {
+        const li = document.createElement('li');
+        li.className = 'chip';
+        const label = document.createElement('span');
+        label.className = 'chip-name';
+        label.textContent = `📎 ${f.name}`;
+        label.title = `${f.name} (${sizeText(f.size)})`;
+        const size = document.createElement('span');
+        size.className = 'chip-size';
+        size.textContent = sizeText(f.size);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'chip-x';
+        x.textContent = '×';
+        x.setAttribute('aria-label', `${f.name} 첨부 빼기`);
+        x.addEventListener('click', () => api.attachRemove(petId, f.id));
+        li.append(label, size, x);
+        return li;
+      }),
+    );
+    sizeDirty = true;
+  }
+
+  /** 첨부가 안 된 이유를 잠깐 보여 준다 @param {string} text */
+  function showAttachMessage(text) {
+    attachMsg.textContent = text;
+    attachMsg.hidden = false;
+    sizeDirty = true;
+    clearTimeout(attachMsgTimer);
+    attachMsgTimer = setTimeout(() => {
+      attachMsg.hidden = true;
+      sizeDirty = true;
+    }, 7000);
+  }
+
+  /** 끌어 온 것이 파일인가 @param {DragEvent} e */
+  const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  const setDropping = (/** @type {boolean} */ on) => {
+    el.classList.toggle('dropping', on);
+    dropHint.hidden = !on;
+  };
+  const acceptDrag = (/** @type {DragEvent} */ e) => {
+    if (!shown || !hasFiles(e)) return;
+    e.preventDefault(); // 이것이 있어야 놓을 수 있다
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    setDropping(true);
+  };
+  el.addEventListener('dragenter', acceptDrag);
+  el.addEventListener('dragover', acceptDrag);
+  el.addEventListener('dragleave', (e) => {
+    if (!(e.relatedTarget instanceof Node) || !el.contains(e.relatedTarget)) setDropping(false);
+  });
+  el.addEventListener('drop', async (e) => {
+    setDropping(false);
+    if (!shown || !hasFiles(e)) return;
+    e.preventDefault();
+    const paths = [...(e.dataTransfer?.files ?? [])].map((f) => api.pathOf(f)).filter(Boolean);
+    if (!paths.length) return showAttachMessage('파일 경로를 읽지 못했어요 (파일만 놓을 수 있어요)');
+    const r = await api.attachPaths(petId, paths);
+    if (r?.rejected?.length) showAttachMessage(r.rejected.map((/** @type {{ name: string, reason: string }} */ x) => `${x.name ? `${x.name}: ` : ''}${x.reason}`).join('\n'));
+  });
+  renderChips();
 
   /** @param {LogEntry['role']} role @param {string} text @param {HTMLElement | null} [before] 이 요소 앞에 끼워 넣는다 */
   function addMessage(role, text, before = null) {
@@ -149,7 +228,7 @@ export function createChat(api, pet, layer, template) {
 
   function submit() {
     const text = input.value.trim();
-    if (!text || state.busy) return;
+    if ((!text && !attached.length) || state.busy) return;
     api.chatSend(petId, text);
     input.value = '';
     autosize();
@@ -206,6 +285,12 @@ export function createChat(api, pet, layer, template) {
     handleState(s) {
       state = { ...state, open: s.open, busy: s.busy, backend: s.backend };
       renderMeta();
+    },
+
+    /** main이 알려 준 첨부 목록 (끌어다 놓았거나, 뺐거나, 보내서 비워졌다) @param {{ id: string, name: string, size: number }[]} files */
+    handleAttach(files) {
+      attached = files;
+      renderChips();
     },
 
     /** 사용자가 보낸 메시지 @param {{ text: string }} m */

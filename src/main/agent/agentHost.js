@@ -258,16 +258,22 @@ export function createAgentHost({
     }
   }
 
-  /** @param {string} text */
-  async function send(text) {
+  /**
+   * @param {string} text
+   * @param {{ attachments?: { name: string, path: string, size: number, kind: string }[] }} [opts] 이 메시지에 첨부한 파일들
+   */
+  async function send(text, { attachments = [] } = {}) {
     text = String(text ?? '').trim().slice(0, 8000);
+    if (!text && attachments.length) text = '첨부한 파일을 봐 주세요.';
     if (!text || busy) return;
+    // 대화창에는 첨부한 파일 이름도 함께 보여 준다 (AI에게는 파일을 따로 전달한다)
+    const shown = attachments.length ? `${text}\n📎 ${attachments.map((f) => f.name).join(', ')}` : text;
     busy = true;
     turn.ok = null;
     turn.text = '';
     turn.aborted = false;
-    pushLog({ role: 'user', text });
-    broadcast('chat:user', { text });
+    pushLog({ role: 'user', text: shown });
+    broadcast('chat:user', { text: shown });
     emitState();
     engine.poke();
     setAnim('think');
@@ -287,7 +293,7 @@ export function createAgentHost({
 
       running = adapter;
       onLog(`질문 보냄 (${adapter.id}, ${text.length}자)`);
-      for await (const ev of adapter.send(text)) {
+      for await (const ev of adapter.send(text, { attachments })) {
         if (ev.type === 'done' || ev.type === 'error') finished = true;
         handle(ev);
       }

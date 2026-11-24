@@ -551,6 +551,7 @@ api.onPetState((/** @type {any} */ s) => {
 api.onChatState((/** @type {any} */ s) => pets.get(s.petId)?.chat.handleState(s));
 api.onChatUser((/** @type {any} */ m) => pets.get(m.petId)?.chat.handleUser(m));
 api.onAgentEvent((/** @type {any} */ ev) => pets.get(ev.petId)?.chat.handleAgent(ev));
+api.onAttachState((/** @type {any} */ s) => pets.get(s.petId)?.chat.handleAttach(s.files));
 api.onPermRequest((/** @type {any} */ r) => pets.get(r.petId)?.chat.handlePermRequest(r));
 api.onPermResolved((/** @type {any} */ r) => pets.get(r.petId)?.chat.handlePermResolved(r));
 api.onNoticeShow((/** @type {any} */ n) => pets.get(n.petId)?.chat.showNotice(n));

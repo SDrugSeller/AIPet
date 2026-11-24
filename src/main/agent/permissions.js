@@ -56,15 +56,19 @@ export function isInside(root, target) {
  * @typedef {{
  *   autoAllowRead: boolean, autoAllowWeb?: boolean, autoAllowEdit?: boolean, autoAllowShell?: boolean,
  *   autoAllowFetch?: boolean, workDir: string,
+ *   readRoots?: string[],
  * }} Policy
+ *   readRoots: 작업 폴더 밖이어도 읽기 전용 도구에는 열어 주는 폴더 (대화에 첨부한 파일의 복사본이 있는 곳)
  * @param {{ name: string, input: any }} req
  * @param {Policy} policy
  * @returns {Decision}
  */
-export function decide({ name, input }, { autoAllowRead, autoAllowWeb, autoAllowEdit, autoAllowShell, autoAllowFetch, workDir }) {
+export function decide({ name, input }, { autoAllowRead, autoAllowWeb, autoAllowEdit, autoAllowShell, autoAllowFetch, workDir, readRoots = [] }) {
   for (const key of PATH_KEYS) {
     const p = input?.[key];
-    if (typeof p === 'string' && p && !isInside(workDir, path.resolve(workDir, p))) {
+    // 읽기 전용 도구는 첨부 파일의 복사본이 있는 폴더도 읽을 수 있다 (쓰기·수정은 작업 폴더 안에서만)
+    const readableOutside = READ_ONLY_TOOLS.has(name) && typeof p === 'string' && readRoots.some((r) => isInside(r, path.resolve(workDir, p)));
+    if (typeof p === 'string' && p && !readableOutside && !isInside(workDir, path.resolve(workDir, p))) {
       return { action: 'deny', reason: `작업 폴더(${workDir}) 밖의 경로라서 거부했어요. 설정에서 작업 폴더를 바꿀 수 있어요.` };
     }
   }

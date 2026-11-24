@@ -26,10 +26,14 @@
           </span>
         </header>
         <div class="log" role="log" aria-live="polite"></div>
+        <!-- 끌어다 놓은 파일: 이름이 든 작은 칩(알약 모양)으로 입력창 위에 붙는다 -->
+        <ul class="chips" hidden aria-label="첨부한 파일"></ul>
+        <p class="attach-msg" hidden role="alert"></p>
         <form class="composer" autocomplete="off">
           <textarea class="input" rows="1" maxlength="8000" placeholder="무엇을 도와줄까요?" spellcheck="false"></textarea>
           <button class="send" type="submit" title="보내기 (Enter)" aria-label="보내기">↑</button>
         </form>
+        <div class="drop-hint" hidden>파일을 여기에 놓으면 첨부돼요</div>
       </section>
 
       <!-- 알림 말풍선: 펫이 먼저 말을 걸 때(쉬라는 안내, 정해진 시각 알림, 작업 완료) 잠깐 뜬다 -->

@@ -309,6 +309,18 @@
             <span class="muted" id="loginNote"></span>
           </label>
         </section>
+        <section>
+          <h2>파일 첨부</h2>
+          <p class="muted">대화창이 열려 있을 때 파일을 끌어다 놓으면 대화에 첨부돼요. 원본은 건드리지 않고 앱 전용 폴더에 복사해서 쓰며, 그 대화가 끝나면(새 대화를 시작하거나 앱을 끌 때) 복사본을 지워요. 앱을 켤 때도 남은 복사본을 지워요.</p>
+          <label class="field">
+            파일 하나의 최대 크기(MB) <span class="muted">(1~50)</span>
+            <input type="number" min="1" max="50" data-path="attachments.maxFileMb" />
+          </label>
+          <label class="field">
+            한 번에 첨부할 수 있는 개수 <span class="muted">(1~10)</span>
+            <input type="number" min="1" max="10" data-path="attachments.maxFiles" />
+          </label>
+        </section>
       </div>
 
       <footer><span id="saved" aria-live="polite"></span></footer>

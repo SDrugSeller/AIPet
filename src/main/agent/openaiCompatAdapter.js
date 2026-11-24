@@ -2,6 +2,7 @@
 // OpenAI 호환 어댑터 (Ollama, LM Studio, OpenRouter 등). /chat/completions 스트리밍(SSE)을 AgentEvent로 변환한다.
 // 이 어댑터에는 도구 루프가 없다 (대화 전용). 도구는 API 어댑터(M6)에서 앱이 직접 게이트하며 구현한다.
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { historyText, prepareAttachments, withAttachmentText } from './attachParts.js';
 import { parseOpenAIModels } from './modelList.js';
 
 const MAX_HISTORY = 20;
@@ -104,7 +105,7 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
       }
     },
 
-    send(msg) {
+    send(msg, ctx) {
       const queue = createQueue();
       const ctl = new AbortController();
       controller = ctl;
@@ -112,7 +113,13 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
       (async () => {
         queue.push({ type: 'status', state: 'thinking' });
         const base = baseOf();
-        const messages = [{ role: 'system', content: buildSystemPrompt(getConfig().persona, false) }, ...history, { role: 'user', content: msg }];
+        // 첨부 파일은 이 요청에만 싣는다 (이미지는 data URL, 글은 본문). 이미지는 그림을 볼 수 있는 모델이어야 한다.
+        const prep = await prepareAttachments(ctx?.attachments ?? [], 'openai');
+        for (const note of prep.notes) queue.push({ type: 'trace', text: `첨부 제외 · ${note}` });
+        const content = prep.binary.length
+          ? [{ type: 'text', text: withAttachmentText(msg, prep) }, ...prep.binary.map((b) => ({ type: 'image_url', image_url: { url: `data:${b.mime};base64,${b.data}` } }))]
+          : withAttachmentText(msg, prep);
+        const messages = [{ role: 'system', content: buildSystemPrompt(getConfig().persona, false) }, ...history, { role: 'user', content }];
         let reply = '';
         try {
           const model = await resolveModel();
@@ -140,7 +147,7 @@ export function createOpenAICompatAdapter({ getConfig, fetchImpl = fetch }) {
               queue.push({ type: 'text', delta: delta.content });
             }
           }
-          history = [...history, { role: 'user', content: msg }, { role: 'assistant', content: reply }].slice(-MAX_HISTORY);
+          history = [...history, { role: 'user', content: historyText(msg, ctx?.attachments ?? []) }, { role: 'assistant', content: reply }].slice(-MAX_HISTORY);
           queue.push({ type: 'done' });
         } catch (e) {
           if (!ctl.signal.aborted) queue.push({ type: 'error', message: `연결이 끊어졌어요: ${/** @type {Error} */ (e).message}` });

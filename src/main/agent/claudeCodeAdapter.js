@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { prepareAttachments, withAttachmentText } from './attachParts.js';
 import { claudeModel, describeModel } from './modelInfo.js';
 import { CLAUDE_KNOWN_MODELS } from './modelList.js';
 import { cleanEnv, findOnPath, isFile, isWin, killTree, launchFailureMessage, readLines, run, spawnCli } from './cli.js';
@@ -240,7 +241,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
 
     currentModel: actualModel,
 
-    send(msg) {
+    send(msg, ctx) {
       const queue = createQueue();
       aborted = false;
 
@@ -253,6 +254,14 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
         }
         fs.mkdirSync(cfg.workDir, { recursive: true });
         fs.mkdirSync(metaDir, { recursive: true });
+        // 첨부 파일: 이미지·PDF는 블록으로, 글은 본문에, 나머지는 경로 안내로 (도구를 쓸 수 있을 때만)
+        const prep = await prepareAttachments(ctx?.attachments ?? [], 'claude', { tools: cfg.tools });
+        for (const note of prep.notes) queue.push({ type: 'trace', text: `첨부 제외 · ${note}` });
+        /** @type {any[]} */
+        const userContent = [
+          ...prep.binary.map((b) => ({ type: b.kind === 'image' ? 'image' : 'document', source: { type: 'base64', media_type: b.mime, data: b.data } })),
+          { type: 'text', text: withAttachmentText(msg, prep) },
+        ];
         const systemPrompt = buildSystemPrompt(cfg.persona, cfg.tools);
         const key = JSON.stringify([cfg.workDir, cfg.configDir ?? '', cfg.tools, cfg.model ?? '', systemPrompt]);
         const personaFile = path.join(metaDir, 'system-prompt.txt');
@@ -348,7 +357,7 @@ export function createClaudeCodeAdapter({ getConfig, metaDir }) {
 
           // 사용자 입력은 인자가 아니라 stdin(JSON 한 줄)으로만 전달한다 (인자 주입/길이 제한 방지).
           c.stdin?.on('error', () => {});
-          writeLine({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: msg }] } });
+          writeLine({ type: 'user', message: { role: 'user', content: userContent } });
         };
 
         launch(!!sessionId);

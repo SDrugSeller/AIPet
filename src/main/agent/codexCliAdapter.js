@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildSystemPrompt, createQueue } from './adapter.js';
 import { privateCodexBinary } from '../tools/toolPaths.js';
+import { buildPathNote } from '../../shared/attachments.js';
 import { codexModel, describeModel } from './modelInfo.js';
 import { parseCodexCatalog } from './modelList.js';
 import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, killTree, launchFailureMessage, MAX_HISTORY_TURNS, readLines, run, spawnCli } from './cli.js';
@@ -194,7 +195,7 @@ export function createCodexCliAdapter({ getConfig }) {
       return { ok: true, model, info: `${v.stdout.trim()} · ${bin}\n${status}\n모델: ${describeModel(model)}\n${mode}` };
     },
 
-    send(msg) {
+    send(msg, ctx) {
       const queue = createQueue();
       aborted = false;
 
@@ -207,11 +208,13 @@ export function createCodexCliAdapter({ getConfig }) {
         }
         fs.mkdirSync(cfg.workDir, { recursive: true });
         const write = !!cfg.write;
-        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, write ? 'sandbox' : 'readonly', { web: cfg.web }), history, message: msg });
+        const prompt = composePrompt({ system: buildSystemPrompt(cfg.persona, write ? 'sandbox' : 'readonly', { web: cfg.web }), history, message: msg + buildPathNote(ctx?.attachments ?? []) });
         const args = ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--sandbox', write ? 'workspace-write' : 'read-only'];
         if (cfg.model) args.push('-m', cfg.model);
         // 웹 검색 허용: 읽기 전용 샌드박스 그대로 모델의 web_search 도구만 켠다. 꺼져 있으면 사용자의 codex 설정을 건드리지 않는다.
         if (cfg.web) args.push('-c', 'web_search="live"');
+        // 첨부한 이미지는 모델에 직접 보여 준다 (그 밖의 파일은 위 안내 글의 경로로 읽는다)
+        for (const f of ctx?.attachments ?? []) if (f.kind === 'image') args.push('--image', f.path);
         args.push('-'); // 프롬프트는 stdin으로 (인자 주입/길이 제한 방지)
 
         /** @type {CodexState} */

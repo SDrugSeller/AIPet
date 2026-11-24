@@ -3,6 +3,7 @@
 // 대화 전용이다 (도구 없음). 키는 설정의 보안 저장소(또는 ANTHROPIC_API_KEY 환경변수)에서만 가져온다.
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, createQueue } from './adapter.js';
+import { historyText, prepareAttachments, withAttachmentText } from './attachParts.js';
 import { parseAnthropicModels } from './modelList.js';
 
 const MAX_HISTORY = 20;
@@ -73,7 +74,7 @@ export function createAnthropicApiAdapter({ getConfig, clientOptions }) {
       }
     },
 
-    send(msg) {
+    send(msg, ctx) {
       const queue = createQueue();
       aborted = false;
 
@@ -82,12 +83,18 @@ export function createAnthropicApiAdapter({ getConfig, clientOptions }) {
         queue.push({ type: 'status', state: 'thinking' });
         let reply = '';
         try {
+          // 첨부 파일은 이 요청에만 싣는다 (대화 기록에는 파일 이름만 남긴다)
+          const prep = await prepareAttachments(ctx?.attachments ?? [], 'anthropic');
+          for (const note of prep.notes) queue.push({ type: 'trace', text: `첨부 제외 · ${note}` });
+          const content = prep.binary.length
+            ? [...prep.binary.map((b) => ({ type: b.kind === 'image' ? 'image' : 'document', source: { type: 'base64', media_type: b.mime, data: b.data } })), { type: 'text', text: withAttachmentText(msg, prep) }]
+            : withAttachmentText(msg, prep);
           /** @type {any} */
           const params = {
             model: cfg.model,
             max_tokens: 16000,
             system: buildSystemPrompt(cfg.persona, false),
-            messages: [...history, { role: 'user', content: msg }],
+            messages: [...history, { role: 'user', content }],
           };
           const c = client();
           // 안전 분류기가 요청을 거절하면 서버가 같은 요청을 대체 모델로 다시 처리하게 한다 (지원하는 모델에서만).
@@ -108,7 +115,7 @@ export function createAnthropicApiAdapter({ getConfig, clientOptions }) {
           if (final.stop_reason === 'refusal') {
             queue.push({ type: 'error', message: '안전 정책 때문에 이 요청에는 답할 수 없어요.' });
           } else {
-            history = [...history, { role: 'user', content: msg }, { role: 'assistant', content: reply }].slice(-MAX_HISTORY);
+            history = [...history, { role: 'user', content: historyText(msg, ctx?.attachments ?? []) }, { role: 'assistant', content: reply }].slice(-MAX_HISTORY);
             queue.push({ type: 'done' });
           }
         } catch (e) {
