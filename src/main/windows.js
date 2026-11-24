@@ -307,6 +307,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
   const INSTALL_OFFER_TEXT = {
     'not-found': 'Codex를 찾지 못했어요. 제가 대신 설치해 드릴까요? (공식 사이트에서 받아 AIPet 전용 폴더에만 설치하고, 이 PC의 다른 곳은 건드리지 않아요)',
     'launch-failed': 'Codex를 실행하지 못했어요. 앱 전용 폴더에 새로 설치해 볼까요? (공식 사이트에서 받고, 이 PC의 다른 곳은 건드리지 않아요)',
+    'bad-path': '지정한 경로에서 Codex를 찾지 못했어요. 경로를 비우고 앱 전용 폴더에 새로 설치해 볼까요? (공식 사이트에서 받고, 이 PC의 다른 곳은 건드리지 않아요)',
   };
 
   /** 설치 제안 말풍선이 떠 있는 펫 id */
@@ -331,7 +332,7 @@ export function createOverlayManager({ preloadPath, rendererPath, debug, logging
     for (const [id, pet] of pets) {
       if (pet.conn.kind !== 'codex-cli') continue;
       const b = pet.host.backends()[0];
-      const problem = /** @type {'not-found' | 'launch-failed' | ''} */ (b?.problem === 'not-found' || b?.problem === 'launch-failed' ? b.problem : '');
+      const problem = /** @type {'not-found' | 'launch-failed' | 'bad-path' | ''} */ (b?.problem === 'not-found' || b?.problem === 'launch-failed' || b?.problem === 'bad-path' ? b.problem : '');
       if (!b?.checked || b.available || !problem) continue;
       installOfferPetId = id;
       setupHintShown = true; // 같은 말풍선 자리를 쓰는 일반 설정 안내는 이번 실행에서는 건너뛴다

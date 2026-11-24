@@ -205,7 +205,9 @@ function buildSetupBox(id) {
     const installing = t.install.phase === 'running';
     const loggingIn = t.login.phase === 'running' && t.login.connId === id;
     const unavailable = c.enabled && !!st?.checked && !st.available;
-    const missing = unavailable && (st.problem === 'not-found' || st.problem === 'launch-failed');
+    const missing = unavailable && (st.problem === 'not-found' || st.problem === 'launch-failed' || st.problem === 'bad-path');
+    // 실행 파일 경로를 직접 적어 둔 채로 막혔거나 없다면, 설치할 때 그 경로를 비워 새로 설치한 것을 쓰게 한다
+    const clearsPath = missing && !!c.options?.path && st.problem !== 'not-found';
     const needLogin = unavailable && st.problem === 'not-logged-in';
     const installFailed = t.install.phase === 'error' && t.install.tool === 'codex-cli';
     const loginFailed = t.login.phase === 'error' && t.login.connId === id;
@@ -225,15 +227,17 @@ function buildSetupBox(id) {
             : needLogin
               ? 'Codex에 로그인이 필요해요. 버튼을 누르면 브라우저가 열려요.'
               : st.problem === 'launch-failed'
-                ? 'Codex를 실행하지 못했어요. 앱 전용 폴더에 새로 설치해 볼까요?'
-                : 'Codex를 찾지 못했어요. 앱이 대신 설치해 드릴까요?';
+                ? 'Codex를 실행하지 못했어요. Windows가 막은 것 같아요. 앱 전용 폴더에 새로 설치해 볼까요?'
+                : st.problem === 'bad-path'
+                  ? '지정한 경로에서 Codex를 찾지 못했어요. 경로를 비우고 앱이 대신 설치해 드릴까요?'
+                  : 'Codex를 찾지 못했어요. 앱이 대신 설치해 드릴까요?';
     bar.hidden = !installing;
     if (installing && t.install.percent !== null) bar.value = t.install.percent;
     else bar.removeAttribute('value'); // 진행률을 모를 때는 계속 움직이는 막대
     status.textContent = installing ? t.install.message : loggingIn ? t.login.message : installFailed ? t.install.reason : loginFailed ? t.login.message : '';
     details.hidden = installing || loggingIn || needLogin;
     installBtn.hidden = installing || loggingIn || needLogin || (!missing && !installFailed);
-    installBtn.textContent = installFailed ? '다시 시도' : '앱 전용으로 설치하기';
+    installBtn.textContent = installFailed ? '다시 시도' : clearsPath ? '경로를 비우고 앱 전용으로 설치하기' : '앱 전용으로 설치하기';
     cancelBtn.hidden = !installing;
     loginBtn.hidden = loggingIn || installing || !(needLogin || loginFailed);
     cancelLoginBtn.hidden = !loggingIn;

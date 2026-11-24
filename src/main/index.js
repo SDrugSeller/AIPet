@@ -87,6 +87,12 @@ if (!app.requestSingleInstanceLock()) {
       refresh: (id) => (id ? manager.refresh(id) : manager.refreshAll()),
       findBin: (id) => findCodexBinary(config.codex(id).path),
       openExternal: (url) => void shell.openExternal(url),
+      // 실행이 막혔거나 없는 파일을 가리키는 "실행 파일 경로"가 적혀 있으면, 새로 설치한 것이 쓰이도록 그 경로를 비운다
+      beforeRefresh: () => {
+        const st = manager.statuses();
+        const stale = store.get().connections.filter((c) => c.kind === 'codex-cli' && c.options.path && ['launch-failed', 'bad-path'].includes(st[c.id]?.problem ?? ''));
+        if (stale.length) store.update({ connections: store.get().connections.map((c) => (stale.some((s) => s.id === c.id) ? { ...c, options: { ...c.options, path: '' } } : c)) });
+      },
       onFinish: (r) => manager.notifySetupResult(r),
     });
 

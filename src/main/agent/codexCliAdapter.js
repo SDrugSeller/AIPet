@@ -167,7 +167,7 @@ export function createCodexCliAdapter({ getConfig }) {
       if (!bin) {
         return {
           ok: false,
-          ...(cfg.path ? {} : { problem: /** @type {const} */ ('not-found') }),
+          problem: cfg.path ? /** @type {const} */ ('bad-path') : /** @type {const} */ ('not-found'),
           reason: cfg.path
             ? '지정한 경로에서 codex를 찾을 수 없어요. 설정에서 경로를 확인해 주세요.'
             : 'codex CLI를 찾을 수 없어요. 설정 → 연결의 "앱 전용으로 설치하기"로 앱이 대신 설치하거나, Codex 데스크톱 앱(Microsoft Store)을 설치하거나 npm i -g @openai/codex로 설치한 뒤 로그인해 주세요.',

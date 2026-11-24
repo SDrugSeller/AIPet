@@ -1,6 +1,7 @@
 // @ts-check
 // CLI 어댑터들이 함께 쓰는 도구: 실행 파일 찾기, 서브프로세스 실행/종료, 짧은 명령 실행.
 import { execFileSync, spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -113,15 +114,38 @@ export function launchFailureMessage(tool, raw, { bin = '', install = '' } = {})
 const quoteWin = (s) => (/^[\w@%+=:,./\\-]+$/.test(s) ? s : `"${s.replace(/"/g, '""')}"`);
 
 /**
+ * 실행하지 못한 서브프로세스를 흉내 낸다: 곧바로 'error' 이벤트를 내고, 입출력은 없다.
+ * Node의 spawn은 Windows가 실행을 거부하면(EPERM 등) 'error' 이벤트가 아니라 **즉시 예외**를 던진다. 그러면 호출한 쪽의 오류 처리가
+ * 우회되어 "왜 안 되는지"를 보여 주지 못하므로, 실패도 정상 오류와 같은 'error' 이벤트로 돌려준다.
+ * @param {unknown} err
+ * @returns {import('node:child_process').ChildProcess}
+ */
+function failedChild(err) {
+  const c = /** @type {any} */ (new EventEmitter());
+  c.stdout = c.stderr = c.stdin = null;
+  c.pid = undefined;
+  c.killed = false;
+  c.exitCode = 1; // killTree가 끝난 프로세스로 보고 건드리지 않는다
+  c.kill = () => false;
+  process.nextTick(() => c.emit('error', err instanceof Error ? err : new Error(String(err))));
+  return c;
+}
+
+/**
  * 서브프로세스를 띄운다. .cmd/.bat 셔임은 셸이 필요하다.
  * 사용자 입력은 절대 인자로 넘기지 않고 stdin으로만 보낸다 (인자 주입/길이 제한 방지).
+ * 띄우지 못해도 예외를 던지지 않고 'error' 이벤트를 내는 프로세스를 돌려준다 (failedChild 참조).
  * @param {string} bin @param {string[]} args @param {import('node:child_process').SpawnOptions} opts
  */
 export function spawnCli(bin, args, opts) {
-  if (/\.(cmd|bat)$/i.test(bin)) {
-    return spawn([bin, ...args].map(quoteWin).join(' '), { ...opts, shell: true });
+  try {
+    if (/\.(cmd|bat)$/i.test(bin)) {
+      return spawn([bin, ...args].map(quoteWin).join(' '), { ...opts, shell: true });
+    }
+    return spawn(bin, args, opts);
+  } catch (e) {
+    return failedChild(e);
   }
-  return spawn(bin, args, opts);
 }
 
 /**

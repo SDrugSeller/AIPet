@@ -18,7 +18,7 @@
  * @typedef {Object} DetectResult
  * @property {boolean} ok
  * @property {string} [reason]  사용할 수 없을 때 이유와 해결 안내
- * @property {'not-found' | 'launch-failed' | 'not-logged-in'} [problem]  사용할 수 없는 이유의 종류 (설정 화면이 "설치하기"/"로그인하기" 버튼을 보여 주는 데 쓴다)
+ * @property {'not-found' | 'bad-path' | 'launch-failed' | 'not-logged-in'} [problem]  사용할 수 없는 이유의 종류 (설정 화면이 "설치하기"/"로그인하기" 버튼을 보여 주는 데 쓴다)
  * @property {string} [info]    어떤 계정/주소로 동작하는지 (설정 화면에 표시, DESIGN.md 4.3)
  */
 

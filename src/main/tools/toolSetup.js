@@ -88,10 +88,12 @@ export function runLogin({ bin, signal, onUrl = () => {}, timeoutMs = 10 * 60_00
  *   installer?: ReturnType<typeof createInstaller>,
  *   login?: typeof runLogin,
  *   openExternal?: (url: string) => void,
+ *   beforeRefresh?: () => void | Promise<void>,
  *   onFinish?: (r: SetupResult) => void,
  * }} opts
+ *   beforeRefresh: 설치가 끝난 뒤 연결을 다시 확인하기 전에 할 일 (예: 막힌 경로를 비워서 새로 설치한 것이 쓰이게 한다)
  */
-export function createToolSetup({ root, refresh, findBin, installer = createInstaller({ root }), login = runLogin, openExternal = () => {}, onFinish = () => {} }) {
+export function createToolSetup({ root, refresh, findBin, installer = createInstaller({ root }), login = runLogin, openExternal = () => {}, beforeRefresh = () => {}, onFinish = () => {} }) {
   /** @type {SetupState} */
   let st = {
     install: { tool: null, phase: 'idle', step: '', message: '', percent: null, reason: '' },
@@ -139,6 +141,7 @@ export function createToolSetup({ root, refresh, findBin, installer = createInst
         });
         if (installAbort === ac) installAbort = null;
         if (r.ok) {
+          await beforeRefresh();
           await refresh(); // 설치 직후 연결을 다시 확인한다
           const message = `Codex ${r.version}을(를) 설치했어요`;
           setInstall({ phase: 'done', step: 'done', message, percent: 100, reason: '' });
