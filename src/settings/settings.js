@@ -146,6 +146,191 @@ function el(tag, cls = '', text = '') {
 }
 
 /**
+ * 원인 진단 결과를 보여 주는 상자. 결론 한 줄, 권장 행동 버튼, 자세한 내용(복사 가능).
+ * @param {string} id 진단할 연결 id (탭에서는 고른 연결로 바뀐다)
+ */
+function buildDiagView(id) {
+  const root = el('div', 'diag-box');
+  root.hidden = true;
+  const head = el('p', 'diag-head');
+  const advice = el('p', 'muted');
+  const actions = el('div', 'inline');
+  const details = /** @type {HTMLDetailsElement} */ (el('details', 'diag-details'));
+  details.append(el('summary', '', '자세한 내용 (복사해서 보낼 수 있어요)'));
+  const pre = el('pre', 'info');
+  const copy = el('button', '', '복사');
+  copy.type = 'button';
+  details.append(pre, copy);
+  root.append(head, advice, actions, details);
+  let text = '';
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      flashSaved('진단 내용을 복사했어요');
+    } catch {
+      flashSaved('복사하지 못했어요. 자세한 내용을 직접 선택해서 복사해 주세요');
+    }
+  });
+
+  /** @param {string} label @param {() => void | Promise<void>} fn */
+  const action = (label, fn) => {
+    const b = el('button', 'primary', label);
+    b.type = 'button';
+    b.addEventListener('click', fn);
+    actions.append(b);
+  };
+
+  return {
+    root,
+    /** 진단을 실행하고 결과를 보여 준다 @param {HTMLButtonElement} [btn] 실행 중에 잠글 버튼 @param {string} [connId] */
+    async run(btn, connId = id) {
+      if (btn) btn.disabled = true;
+      flashSaved('진단하는 중… (인터넷 접속까지 확인해서 몇 초 걸려요)');
+      const r = await api.diagnose(connId);
+      if (btn) btn.disabled = false;
+      if (!r) return flashSaved('이 연결은 진단할 외부 프로그램이 없어요');
+      flashSaved('진단했어요');
+      root.hidden = false;
+      root.className = `diag-box diag-${r.level}`;
+      head.textContent = r.headline;
+      advice.textContent = r.advice;
+      text = r.text;
+      pre.textContent = r.text;
+      actions.replaceChildren();
+      if (r.recommend === 'install') {
+        action('앱 전용으로 설치하기', async () => {
+          const s = await api.toolsInstall('codex-cli');
+          if (s) apply(s.state);
+        });
+      } else if (r.recommend === 'login') {
+        action('로그인하기', async () => {
+          const s = await api.toolsLogin(connId);
+          if (s?.state) apply(s.state);
+          if (s && !s.ok) flashSaved(s.reason ?? '로그인을 시작하지 못했어요');
+        });
+      } else if (r.recommend === 'clear-path') {
+        action('실행 파일 경로 비우기', async () => {
+          await patchConnection(connId, (c) => (c.options.path = ''));
+          apply(await api.recheck(connId));
+        });
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------- "도구 설치" 탭
+
+/** 마지막으로 읽은 앱 전용 설치본 정보 @type {any} */
+let toolsInfo = null;
+/** 설치 진행 상태가 바뀌었는지 보려는 표시 (끝났을 때 정보를 다시 읽는다) */
+let toolsPhaseSig = '';
+
+async function refreshToolsInfo() {
+  toolsInfo = await api.toolsInfo();
+  renderToolsTab();
+}
+
+const toolsUi = (() => {
+  const box = $('#toolsBox');
+  const card = el('article', 'card');
+  const title = el('header');
+  title.append(el('strong', '', 'Codex'));
+  const badge = el('span', 'badge');
+  title.append(badge);
+  const lines = el('pre', 'info');
+  const note = el('p', 'muted');
+  const bar = /** @type {HTMLProgressElement} */ (el('progress'));
+  bar.max = 100;
+  const status = el('p', 'muted setup-status');
+  const row = el('div', 'inline');
+  const installBtn = el('button', 'primary', '설치하기');
+  installBtn.type = 'button';
+  const cancelBtn = el('button', '', '취소');
+  cancelBtn.type = 'button';
+  const removeBtn = el('button', '', 'Codex 삭제');
+  removeBtn.type = 'button';
+  const removeAllBtn = el('button', '', '전용 Node.js까지 모두 지우기');
+  removeAllBtn.type = 'button';
+  row.append(installBtn, cancelBtn, removeBtn, removeAllBtn);
+  card.append(title, lines, bar, status, row, note);
+  box.append(card);
+
+  installBtn.addEventListener('click', async () => {
+    const installed = !!toolsInfo?.codex?.installed;
+    if (installed && !window.confirm('앱 전용 Codex를 지우고 새로 설치할까요? (로그인 정보는 그대로예요)')) return;
+    const r = installed ? await api.toolsReinstall('codex-cli') : await api.toolsInstall('codex-cli');
+    if (r) apply(r.state);
+    if (r && !r.started) flashSaved('지금은 다른 작업을 하는 중이에요');
+  });
+  cancelBtn.addEventListener('click', () => api.toolsCancel());
+  /** @param {'codex' | 'all'} scope @param {string} msg */
+  const remove = async (scope, msg) => {
+    if (!window.confirm(msg)) return;
+    const r = await api.toolsRemove(scope);
+    if (!r) return;
+    apply(r.state);
+    flashSaved(r.result.ok ? '지웠어요' : r.result.reason);
+    await refreshToolsInfo();
+  };
+  removeBtn.addEventListener('click', () => remove('codex', '앱 전용으로 설치한 Codex를 삭제할까요?\n(전용 Node.js와 로그인 정보는 그대로 남아요)'));
+  removeAllBtn.addEventListener('click', () => remove('all', '앱 전용 폴더의 Codex와 전용 Node.js를 모두 지울까요?\n(로그인 정보는 지우지 않아요. 나중에 다시 설치할 수 있어요)'));
+  return { badge, lines, note, bar, status, installBtn, cancelBtn, removeBtn, removeAllBtn };
+})();
+
+const toolsDiag = buildDiagView('');
+
+function renderToolsTab() {
+  const u = toolsUi;
+  const t = state.tools ?? { install: { phase: 'idle' }, login: { phase: 'idle' } };
+  const installing = t.install.phase === 'running';
+  const info = toolsInfo;
+  const codex = info?.codex;
+  u.badge.textContent = installing ? '설치 중…' : !info ? '확인 중…' : codex?.installed ? (codex.runnable ? '설치됨' : '설치됨(실행 안 됨)') : '설치 안 됨';
+  u.badge.className = `badge ${installing || !info ? '' : codex?.installed && codex.runnable ? 'ok' : codex?.installed ? 'bad' : ''}`;
+  u.lines.textContent = info
+    ? [
+        codex.installed ? `Codex: ${codex.version || '실행하지 못했어요'} · ${codex.sizeMb.toLocaleString('en-US')}MB` : 'Codex: 앱 전용으로 설치된 것이 없어요',
+        `전용 Node.js: ${info.node.installed ? `${info.node.version || '?'} · ${info.node.sizeMb.toLocaleString('en-US')}MB` : '없음'}`,
+        `설치 위치: ${info.dir} (합계 ${info.totalMb.toLocaleString('en-US')}MB)`,
+      ].join('\n')
+    : '';
+  u.bar.hidden = !installing;
+  if (installing && t.install.percent !== null) u.bar.value = t.install.percent;
+  else u.bar.removeAttribute('value');
+  u.status.textContent = installing ? t.install.message : t.install.phase === 'error' && t.install.tool === 'codex-cli' ? `설치하지 못했어요: ${t.install.reason}` : t.install.phase === 'done' ? t.install.message : '';
+  u.installBtn.hidden = installing;
+  u.installBtn.textContent = codex?.installed ? '새로 설치 (지우고 다시 설치)' : '설치하기';
+  u.cancelBtn.hidden = !installing;
+  u.removeBtn.hidden = installing || !codex?.installed;
+  u.removeAllBtn.hidden = installing || !(info?.node?.installed || codex?.installed);
+  u.note.textContent = '공식 사이트(nodejs.org)에서 받은 Node.js로 앱 전용 폴더에 설치해요. 관리자 권한이 필요 없고, 지워도 로그인 정보는 남아요. 앱 전용 설치본은 터미널의 codex 명령과는 별개예요.';
+
+  // 진단할 연결 목록
+  const sel = /** @type {HTMLSelectElement} */ ($('#toolsDiagConn'));
+  const cliConns = state.settings.connections.filter((/** @type {any} */ c) => ['codex-cli', 'claude-code', 'gemini-cli'].includes(c.kind));
+  const sig = cliConns.map((/** @type {any} */ c) => c.id).join('|');
+  if (sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.replaceChildren(...cliConns.map((/** @type {any} */ c) => option(c.id, `${c.name} (${KINDS[/** @type {keyof typeof KINDS} */ (c.kind)].label})`)));
+  }
+  $('#toolsDiagBtn').toggleAttribute('disabled', !cliConns.length);
+
+  // 설치/삭제가 끝났으면 정보를 다시 읽는다
+  const phase = `${t.install.phase}:${t.install.tool}`;
+  if (phase !== toolsPhaseSig) {
+    const was = toolsPhaseSig;
+    toolsPhaseSig = phase;
+    if (was && !installing) void refreshToolsInfo();
+  }
+}
+
+$('#toolsDiagOut').append(toolsDiag.root);
+$('#toolsDiagBtn').addEventListener('click', () => {
+  const sel = /** @type {HTMLSelectElement} */ ($('#toolsDiagConn'));
+  if (sel.value) void toolsDiag.run(/** @type {HTMLButtonElement} */ ($('#toolsDiagBtn')), sel.value);
+});
+
+/**
  * Codex 카드의 "설치하기 / 로그인하기" 상자. 상태에 따라 필요한 것만 보여 준다.
  *  - codex를 못 찾았다/실행하지 못했다 → 앱 전용으로 설치하기 (무엇을 어디에 설치하는지 펼쳐 볼 수 있다)
  *  - 설치 중 → 진행 상황과 취소
@@ -402,6 +587,14 @@ function buildCard(conn) {
     });
     tools.append(login);
   }
+  const diag = conn.kind === 'codex-cli' || conn.kind === 'claude-code' || conn.kind === 'gemini-cli' ? buildDiagView(id) : null;
+  if (diag) {
+    const diagBtn = el('button', '', '원인 진단');
+    diagBtn.type = 'button';
+    diagBtn.title = '어디서 막히는지 실제로 실행해 보고 인터넷 접속까지 확인해요';
+    diagBtn.addEventListener('click', () => diag.run(diagBtn));
+    tools.append(diagBtn);
+  }
   const recheck = el('button', '', '다시 확인');
   recheck.type = 'button';
   recheck.addEventListener('click', async () => {
@@ -410,7 +603,9 @@ function buildCard(conn) {
     flashSaved('확인했어요');
   });
   tools.append(recheck);
-  root.append(tools, el('p', 'muted', KIND_NOTE[conn.kind] ?? ''));
+  root.append(tools);
+  if (diag) root.append(diag.root);
+  root.append(el('p', 'muted', KIND_NOTE[conn.kind] ?? ''));
 
   /** 현재 값을 화면에 반영 (입력 중인 칸은 건드리지 않는다) @param {any} c */
   function update(c) {
@@ -951,6 +1146,7 @@ function render() {
   }
 
   renderConnections();
+  renderToolsTab();
   renderPerm();
   renderPersona();
   renderSkinAdd();
@@ -990,6 +1186,7 @@ function selectTab(id) {
     const panel = document.getElementById(/** @type {string} */ (t.getAttribute('aria-controls')));
     if (panel) panel.hidden = !on;
   }
+  if (id === 'tools') void refreshToolsInfo(); // 이 탭을 열 때마다 설치 상태를 새로 읽는다
   window.scrollTo({ top: 0 });
   try {
     localStorage.setItem('aipet.settings.tab', id);

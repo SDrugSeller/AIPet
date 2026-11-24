@@ -150,10 +150,11 @@ export function createInstaller({
 }) {
   /**
    * Codex를 설치(이미 있으면 최신으로 다시 설치)한다.
-   * @param {{ signal?: AbortSignal, onProgress?: (p: InstallProgress) => void }} [opts]
+   * @param {{ signal?: AbortSignal, onProgress?: (p: InstallProgress) => void, clean?: boolean }} [opts]
+   *   clean: 이전에 설치한 Codex를 먼저 지우고 새로 설치한다 ("새로 설치")
    * @returns {Promise<InstallResult>}
    */
-  async function installCodex({ signal, onProgress = () => {} } = {}) {
+  async function installCodex({ signal, onProgress = () => {}, clean = false } = {}) {
     /** @param {string} step @param {string} reason @returns {InstallResult} */
     const fail = (step, reason) => ({ ok: false, step, reason, ...(signal?.aborted ? { cancelled: true, reason: '설치를 취소했어요' } : {}) });
     /** @param {string} step @param {string} message @param {number | null} [percent] */
@@ -214,6 +215,15 @@ export function createInstaller({
       }
 
       // ② Codex CLI를 앱 전용 폴더에 설치
+      if (clean) {
+        say('codex-install', '이전 설치를 지우는 중…');
+        try {
+          fs.rmSync(prefix, { recursive: true, force: true });
+          fs.rmSync(cache, { recursive: true, force: true });
+        } catch (e) {
+          return fail('codex-install', `이전 설치를 지우지 못했어요. Codex를 쓰는 중이거나 백신이 잡고 있을 수 있어요. (${messageOf(e)})`);
+        }
+      }
       const started = Date.now();
       say('codex-install', 'Codex를 설치하는 중… (몇 분 걸릴 수 있어요)');
       const tick = setInterval(() => say('codex-install', `Codex를 설치하는 중… ${Math.round((Date.now() - started) / 1000)}초 (몇 분 걸릴 수 있어요)`), 2000);

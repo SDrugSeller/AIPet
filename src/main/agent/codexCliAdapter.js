@@ -19,7 +19,7 @@ import { cleanEnv, composePrompt, findOnPath, findStoreAppDirs, isFile, isWin, k
 const CODEX_INSTALL = '설정의 "설치하기"로 앱 전용 Codex를 설치하거나, Node.js를 설치한 뒤 cmd에서 npm i -g @openai/codex 로 따로 설치하세요(로그인은 데스크톱 앱과 같아서 다시 할 필요가 없어요)';
 
 /** Codex Desktop(Microsoft Store 앱)이 안에 넣어 둔 codex.exe의 패키지 안 위치 (로그인은 CLI와 같은 ~/.codex를 쓴다) */
-const STORE_CODEX_EXE = ['app', 'resources', 'codex.exe'];
+export const STORE_CODEX_EXE = ['app', 'resources', 'codex.exe'];
 
 /** 마지막으로 찾은 Store 앱의 codex.exe (레지스트리 조회를 매번 하지 않으려는 캐시. 업데이트로 사라지면 다시 찾는다) @type {string | null} */
 let storeCodexCache = null;

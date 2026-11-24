@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('aipetSettings', {
   toolsLogin: (/** @type {string} */ connectionId) => invoke('settings:tools-login', connectionId),
   toolsCancelLogin: () => invoke('settings:tools-cancel-login'),
   toolsOpenLoginUrl: (/** @type {string} */ url) => invoke('settings:tools-open-login-url', url),
+  toolsInfo: () => invoke('settings:tools-info'),
+  toolsReinstall: (/** @type {string} */ tool) => invoke('settings:tools-reinstall', tool),
+  toolsRemove: (/** @type {'codex' | 'all'} */ scope) => invoke('settings:tools-remove', scope),
+  /** 연결 하나의 원인을 진단한다 (후보 실행 파일 실행, 로그인, 폴더, 인터넷) */
+  diagnose: (/** @type {string} */ connectionId) => invoke('settings:diagnose', connectionId),
 
   // 말투 파일
   personaRead: (/** @type {string} */ id) => invoke('settings:persona-read', id),

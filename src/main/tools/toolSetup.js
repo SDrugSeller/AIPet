@@ -5,6 +5,7 @@
 // (명령의 출력에서 로그인 주소 한 줄만 골라 보여 준다.)
 import { cleanEnv, killTree, launchFailureMessage, spawnCli } from '../agent/cli.js';
 import { createInstaller } from './installer.js';
+import { getToolInfo, removeTools } from './toolManage.js';
 
 /** 브라우저로 열어도 되는 로그인 주소인가 (공식 로그인 페이지만) @param {string} url */
 export function isLoginUrl(url) {
@@ -127,14 +128,15 @@ export function createToolSetup({ root, refresh, findBin, installer = createInst
     },
     busy: () => st.install.phase === 'running' || st.login.phase === 'running',
 
-    /** 설치를 시작한다. 이미 무언가 하는 중이면 false @param {string} tool */
-    startInstall(tool) {
+    /** 설치를 시작한다. 이미 무언가 하는 중이면 false @param {string} tool @param {{ clean?: boolean }} [opts] clean: 이전 설치를 지우고 새로 설치 */
+    startInstall(tool, { clean = false } = {}) {
       if (tool !== 'codex-cli' || st.install.phase === 'running' || st.login.phase === 'running') return false;
       const ac = (installAbort = new AbortController());
       setInstall({ tool, phase: 'running', step: 'prepare', message: '준비하는 중…', percent: null, reason: '' });
       void (async () => {
         const r = await installer.installCodex({
           signal: ac.signal,
+          clean,
           onProgress: (p) => {
             if (installAbort === ac) setInstall({ step: p.step, message: p.message, percent: p.percent });
           },
@@ -156,6 +158,25 @@ export function createToolSetup({ root, refresh, findBin, installer = createInst
 
     cancelInstall() {
       installAbort?.abort();
+    },
+
+    /** 앱 전용 설치본의 상태 (버전, 위치, 용량) */
+    info: () => getToolInfo(root),
+
+    /**
+     * 앱 전용 설치본을 지운다 ('codex' = Codex만, 'all' = 전용 Node.js까지). 다른 작업을 하는 중이면 지우지 않는다.
+     * 지운 뒤 연결을 다시 확인한다.
+     * @param {'codex' | 'all'} scope
+     */
+    async remove(scope) {
+      if (st.install.phase === 'running' || st.login.phase === 'running') return { ok: false, reason: '설치나 로그인을 하는 중이에요. 끝난 뒤에 다시 시도해 주세요' };
+      const r = removeTools(root, scope === 'all' ? 'all' : 'codex');
+      if (r.ok) {
+        st = { ...st, install: { tool: null, phase: 'idle', step: '', message: '', percent: null, reason: '' } };
+        emit();
+        await refresh();
+      }
+      return r;
     },
 
     /** 이 연결의 로그인을 시작한다 (브라우저가 열린다). 못 시작하면 사유를 돌려준다 @param {string} connId */

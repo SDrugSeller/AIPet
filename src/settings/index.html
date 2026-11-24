@@ -21,6 +21,7 @@
         <button type="button" class="tab" role="tab" id="tab-pet" aria-controls="panel-pet" aria-selected="false" tabindex="-1">펫</button>
         <button type="button" class="tab" role="tab" id="tab-behavior" aria-controls="panel-behavior" aria-selected="false" tabindex="-1">행동</button>
         <button type="button" class="tab" role="tab" id="tab-notice" aria-controls="panel-notice" aria-selected="false" tabindex="-1">알림</button>
+        <button type="button" class="tab" role="tab" id="tab-tools" aria-controls="panel-tools" aria-selected="false" tabindex="-1">도구 설치</button>
         <button type="button" class="tab" role="tab" id="tab-general" aria-controls="panel-general" aria-selected="false" tabindex="-1">일반</button>
       </nav>
 
@@ -279,6 +280,23 @@
               <button type="button" id="addReminder">알림 추가</button>
             </div>
           </div>
+        </section>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-tools" aria-labelledby="tab-tools" hidden>
+        <section>
+          <h2>도구 설치</h2>
+          <p class="muted">연결에 필요한 프로그램(CLI)을 앱이 대신 설치하고 관리해요. 무슨 오류든 "그냥 새로 설치"하고 싶을 때 여기서 하면 돼요. 앱 전용 폴더에만 설치되고, 로그인 정보는 지우지 않아요.</p>
+          <div id="toolsBox"></div>
+        </section>
+        <section>
+          <h2>원인 진단</h2>
+          <p class="muted">연결이 안 될 때 어디서 막히는지 실제로 실행해 보고 알려 줘요. 인터넷 접속(nodejs.org, npm 등)도 함께 시험해요. 대화 내용과 로그인 정보는 보지 않아요.</p>
+          <div class="inline">
+            <select id="toolsDiagConn" aria-label="진단할 연결"></select>
+            <button type="button" id="toolsDiagBtn">원인 진단</button>
+          </div>
+          <div id="toolsDiagOut"></div>
         </section>
       </div>
 

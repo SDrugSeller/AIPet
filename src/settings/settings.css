@@ -463,3 +463,48 @@ input.conn-name:focus {
 .setup-status:empty {
   display: none;
 }
+
+/* 원인 진단 결과 */
+.diag-box {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--card);
+}
+.diag-box[hidden] {
+  display: none;
+}
+.diag-ok {
+  border-left-color: var(--ok);
+}
+.diag-warn {
+  border-left-color: var(--accent);
+}
+.diag-bad {
+  border-left-color: var(--bad);
+}
+.diag-head {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.diag-box .muted {
+  margin: 0 0 8px;
+}
+.diag-details {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.diag-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
+#toolsDiagConn {
+  flex: 1;
+  min-width: 0;
+}
+#toolsDiagBtn {
+  white-space: nowrap;
+}
